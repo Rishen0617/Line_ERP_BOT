@@ -36,7 +36,11 @@ async def process_text(
     intent = route_text(text)
     log.info("text intent=%s user=%s", intent, user_id)
 
-    if intent == "command":
+    if intent == "help":
+        from app.handlers.command_handler import handle_help
+        await handle_help(group_id)
+
+    elif intent == "command":
         from app.handlers.command_handler import handle_command
         await handle_command(text, reply_token, user_id, group_id)
 

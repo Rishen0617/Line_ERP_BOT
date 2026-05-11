@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SME Bot 控制台</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         background: #f0f2f5; color: #1a1a2e; }
+  header { background: #16213e; color: #fff; padding: 16px 24px;
+           display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 1.2rem; font-weight: 600; }
+  header span { font-size: 0.85rem; opacity: 0.6; margin-left: auto; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+          gap: 16px; padding: 20px 24px 0; }
+  .card { background: #fff; border-radius: 12px; padding: 18px 20px;
+          box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .card .label { font-size: 0.75rem; color: #888; margin-bottom: 6px; }
+  .card .value { font-size: 1.5rem; font-weight: 700; }
+  .card .value.green { color: #22c55e; }
+  .card .value.red { color: #ef4444; }
+  .card .value.blue { color: #3b82f6; }
+  .card .value.amber { color: #f59e0b; }
+  .section { margin: 20px 24px; }
+  .section h2 { font-size: 0.9rem; font-weight: 600; color: #555;
+                text-transform: uppercase; letter-spacing: .05em; margin-bottom: 12px; }
+  .chart-wrap { background: #fff; border-radius: 12px; padding: 20px;
+                box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  table { width: 100%; border-collapse: collapse; background: #fff;
+          border-radius: 12px; overflow: hidden;
+          box-shadow: 0 1px 4px rgba(0,0,0,.08); font-size: 0.85rem; }
+  thead th { background: #16213e; color: #fff; padding: 10px 14px;
+             text-align: left; font-weight: 500; }
+  tbody tr:nth-child(even) { background: #f8f9fb; }
+  tbody td { padding: 9px 14px; border-bottom: 1px solid #f0f0f0; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 99px;
+           font-size: 0.75rem; font-weight: 500; }
+  .badge-high { background: #dcfce7; color: #15803d; }
+  .badge-mid  { background: #fef9c3; color: #a16207; }
+  .badge-low  { background: #fee2e2; color: #b91c1c; }
+  .badge-done { background: #dbeafe; color: #1d4ed8; }
+  .badge-ship { background: #ede9fe; color: #6d28d9; }
+  .badge-pend { background: #f3f4f6; color: #374151; }
+  a { color: #3b82f6; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .empty { text-align: center; color: #aaa; padding: 24px; }
+  .thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 6px;
+           cursor: pointer; border: 1px solid #e5e7eb; transition: transform .15s; }
+  .thumb:hover { transform: scale(1.08); }
+  /* Lightbox */
+  #lb { display:none; position:fixed; inset:0; background:rgba(0,0,0,.85);
+        z-index:9999; align-items:center; justify-content:center; }
+  #lb.open { display:flex; }
+  #lb img { max-width:90vw; max-height:90vh; border-radius:8px;
+            box-shadow:0 8px 32px rgba(0,0,0,.6); }
+  #lb-close { position:fixed; top:20px; right:28px; color:#fff; font-size:2rem;
+              cursor:pointer; line-height:1; }
+  #loading { text-align: center; padding: 60px; color: #888; font-size: 1.1rem; }
+  #content { display: none; }
+  .refresh-btn { background: #3b82f6; color: #fff; border: none; border-radius: 6px;
+                 padding: 6px 14px; cursor: pointer; font-size: 0.8rem; margin-left: auto; }
+  .refresh-btn:hover { background: #2563eb; }
+  @media (max-width: 600px) {
+    .grid { padding: 12px; }
+    .section { margin: 12px; }
+    tbody td, thead th { padding: 8px 10px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>📊</div>
+  <h1>SME Bot 控制台</h1>
+  <button class="refresh-btn" onclick="loadData()">重新整理</button>
+  <span id="last-update"></span>
+</header>
+
+<!-- Lightbox -->
+<div id="lb">
+  <span id="lb-close" onclick="closeLb()">✕</span>
+  <img id="lb-img" src="" alt="">
+</div>
+
+<div id="loading">載入中…</div>
+
+<div id="content">
+  <!-- KPI cards -->
+  <div class="grid">
+    <div class="card">
+      <div class="label">本月收入</div>
+      <div class="value green" id="kpi-income">—</div>
+    </div>
+    <div class="card">
+      <div class="label">本月支出</div>
+      <div class="value red" id="kpi-expense">—</div>
+    </div>
+    <div class="card">
+      <div class="label">本月淨額</div>
+      <div class="value blue" id="kpi-net">—</div>
+    </div>
+    <div class="card">
+      <div class="label">應付帳款</div>
+      <div class="value amber" id="kpi-payable">—</div>
+    </div>
+    <div class="card">
+      <div class="label">收據筆數</div>
+      <div class="value" id="kpi-receipts">—</div>
+    </div>
+    <div class="card">
+      <div class="label">待處理訂單</div>
+      <div class="value" id="kpi-orders">—</div>
+    </div>
+  </div>
+
+  <!-- Chart -->
+  <div class="section">
+    <h2>近 6 個月收支</h2>
+    <div class="chart-wrap" style="height:260px;">
+      <canvas id="chart"></canvas>
+    </div>
+  </div>
+
+  <!-- Receipts table -->
+  <div class="section">
+    <h2>最近收據／發票</h2>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>類型</th>
+            <th>廠商</th>
+            <th>品項</th>
+            <th>金額</th>
+            <th>AI 信心</th>
+            <th>圖片</th>
+          </tr>
+        </thead>
+        <tbody id="receipt-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Orders table -->
+  <div class="section" style="padding-bottom:32px;">
+    <h2>訂單追蹤</h2>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>供應商</th>
+            <th>品項</th>
+            <th>金額</th>
+            <th>狀態</th>
+            <th>物流單號</th>
+          </tr>
+        </thead>
+        <tbody id="order-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const fmt = n => {
+  const v = parseFloat(n) || 0;
+  return v.toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+};
+
+const confidenceBadge = c => {
+  if (c === '高') return `<span class="badge badge-high">高</span>`;
+  if (c === '中') return `<span class="badge badge-mid">中</span>`;
+  return `<span class="badge badge-low">${c || '—'}</span>`;
+};
+
+const statusBadge = s => {
+  if (!s) return '—';
+  if (s.includes('到貨')) return `<span class="badge badge-done">${s}</span>`;
+  if (s.includes('出貨')) return `<span class="badge badge-ship">${s}</span>`;
+  return `<span class="badge badge-pend">${s}</span>`;
+};
+
+let chartInst = null;
+
+async function loadData() {
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('content').style.display = 'none';
+  try {
+    const res = await fetch('/api/dashboard/data?months=6');
+    const d = await res.json();
+    render(d);
+    document.getElementById('last-update').textContent =
+      '更新：' + new Date().toLocaleTimeString('zh-TW');
+  } catch(e) {
+    document.getElementById('loading').textContent = '載入失敗：' + e.message;
+    return;
+  }
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+}
+
+function render(d) {
+  const { monthly, receipts, orders } = d;
+
+  // Current month KPIs
+  const cur = monthly[monthly.length - 1] || {};
+  document.getElementById('kpi-income').textContent  = '$' + fmt(cur.income);
+  document.getElementById('kpi-expense').textContent = '$' + fmt(cur.expense);
+  const net = (parseFloat(cur.income)||0) - (parseFloat(cur.expense)||0);
+  const netEl = document.getElementById('kpi-net');
+  netEl.textContent = (net >= 0 ? '+' : '') + '$' + fmt(Math.abs(net));
+  netEl.className = 'value ' + (net >= 0 ? 'green' : 'red');
+  document.getElementById('kpi-payable').textContent  = '$' + fmt(cur.payable);
+  document.getElementById('kpi-receipts').textContent = receipts.length;
+
+  const pendingOrders = orders.filter(o => !o.status.includes('到貨')).length;
+  document.getElementById('kpi-orders').textContent = pendingOrders;
+
+  // Chart
+  const labels = monthly.map(m => `${m.year}/${String(m.month).padStart(2,'0')}`);
+  const incomes  = monthly.map(m => parseFloat(m.income)  || 0);
+  const expenses = monthly.map(m => parseFloat(m.expense) || 0);
+
+  if (chartInst) chartInst.destroy();
+  chartInst = new Chart(document.getElementById('chart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: '收入', data: incomes,  backgroundColor: 'rgba(34,197,94,.7)',  borderRadius: 4 },
+        { label: '支出', data: expenses, backgroundColor: 'rgba(239,68,68,.7)',  borderRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        y: { ticks: { callback: v => '$' + v.toLocaleString() } }
+      }
+    }
+  });
+
+  // Receipts table
+  const rb = document.getElementById('receipt-body');
+  if (!receipts.length) {
+    rb.innerHTML = '<tr><td colspan="7" class="empty">尚無資料</td></tr>';
+  } else {
+    rb.innerHTML = receipts.map(r => `
+      <tr>
+        <td>${r.date || '—'}</td>
+        <td>${r.doc_type || '—'}</td>
+        <td>${r.vendor || '—'}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.items}">${r.items || '—'}</td>
+        <td>${r.amount ? '$' + fmt(r.amount) : '—'}</td>
+        <td>${confidenceBadge(r.confidence)}</td>
+        <td>${r.drive_url ? `<a href="${r.drive_url}" target="_blank" onclick="openLb(event,'${r.drive_url}')"><img class="thumb" src="${r.drive_url}" onerror="this.style.display='none';this.nextSibling.style.display='inline'" alt="收據"></a><a href="${r.drive_url}" target="_blank" style="display:none">查看</a>` : '—'}</td>
+      </tr>`).join('');
+  }
+
+  // Orders table
+  const ob = document.getElementById('order-body');
+  if (!orders.length) {
+    ob.innerHTML = '<tr><td colspan="6" class="empty">尚無資料</td></tr>';
+  } else {
+    ob.innerHTML = orders.map(o => `
+      <tr>
+        <td>${o.date || '—'}</td>
+        <td>${o.supplier || '—'}</td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${o.items}">${o.items || '—'}</td>
+        <td>${o.amount ? '$' + fmt(o.amount) : '—'}</td>
+        <td>${statusBadge(o.status)}</td>
+        <td>${o.tracking || '—'}</td>
+      </tr>`).join('');
+  }
+}
+
+function openLb(e, url) {
+  // Only intercept /storage/ URLs (local); let Drive links open normally
+  if (!url.includes('/storage/')) return;
+  e.preventDefault();
+  document.getElementById('lb-img').src = url;
+  document.getElementById('lb').classList.add('open');
+}
+function closeLb() {
+  document.getElementById('lb').classList.remove('open');
+  document.getElementById('lb-img').src = '';
+}
+document.getElementById('lb').addEventListener('click', e => {
+  if (e.target === document.getElementById('lb')) closeLb();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLb(); });
+
+loadData();
+</script>
+</body>
+</html>

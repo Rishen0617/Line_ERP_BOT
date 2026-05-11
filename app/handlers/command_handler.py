@@ -9,6 +9,39 @@ from app.line.reply import push_text
 log = logging.getLogger(__name__)
 
 
+async def handle_help(group_id: str) -> None:
+    from app.config import settings
+    trigger = settings.bot_trigger.strip()
+    prefix = f"{trigger} " if trigger else ""
+
+    msg = (
+        "📖 ERP Bot 使用說明\n"
+        "─────────────────\n"
+        "📷 上傳圖片\n"
+        "  直接傳送收據、發票、出貨單照片\n"
+        "  → AI 自動辨識，存入 Sheets\n\n"
+        "💰 文字記帳\n"
+        f"  {prefix}支出 3200 王老吉 進貨\n"
+        f"  {prefix}收入 85000 客戶A 貨款\n"
+        f"  {prefix}應付 12000 台塑 燃料費\n\n"
+        "📦 叫貨訂單\n"
+        f"  {prefix}叫貨 統一 泡麵 100箱\n"
+        f"  {prefix}訂購 聯華 洋芋片 50箱\n\n"
+        "🚚 物流查詢\n"
+        f"  {prefix}AB1234567890（黑貓單號）\n"
+        f"  {prefix}123456789012（7-11 單號）\n\n"
+        "📊 查詢指令\n"
+        f"  {prefix}/月報        當月收支摘要\n"
+        f"  {prefix}/月報 2026-04 指定月份\n"
+        f"  {prefix}/查帳        最近 10 筆流水帳\n"
+        f"  {prefix}/訂單        最近 5 筆訂單\n"
+        f"  {prefix}/查 單號     查詢特定單據\n\n"
+        "─────────────────\n"
+        f"{'群組中請以「' + trigger + '」開頭呼叫' if trigger else '直接輸入指令即可'}"
+    )
+    await push_text(group_id, msg)
+
+
 async def handle_command(
     text: str,
     reply_token: str,

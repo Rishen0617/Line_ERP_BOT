@@ -66,7 +66,10 @@ async def line_webhook(
             else user_id
         )
 
+        is_group = isinstance(event.source, GroupSource)
+
         if isinstance(event.message, ImageMessageContent):
+            # Always process images — sending a photo is an explicit action
             background_tasks.add_task(
                 process_image,
                 message_id=event.message.id,
@@ -76,9 +79,21 @@ async def line_webhook(
             )
 
         elif isinstance(event.message, TextMessageContent):
+            text = event.message.text
+            trigger = settings.bot_trigger.strip()
+
+            # In group chats, require the trigger keyword (if configured)
+            if is_group and trigger:
+                if not text.startswith(trigger):
+                    continue  # ignore — not addressed to this bot
+                # Strip trigger prefix and leading whitespace before processing
+                text = text[len(trigger):].strip()
+                if not text:
+                    continue
+
             background_tasks.add_task(
                 process_text,
-                text=event.message.text,
+                text=text,
                 reply_token=event.reply_token,
                 user_id=user_id,
                 group_id=group_id,

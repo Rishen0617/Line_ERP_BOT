@@ -6,3 +6,6 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 dist/
+storage/
+ngrok.exe
+*.exe

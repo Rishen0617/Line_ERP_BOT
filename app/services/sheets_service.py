@@ -169,6 +169,60 @@ async def get_monthly_summary(year: int, month: int) -> dict[str, Any]:
         raise
 
 
+# ─── Dashboard reads ─────────────────────────────────────────────────
+
+async def get_recent_receipts(n: int = 30) -> list[dict[str, Any]]:
+    """Return the last N receipt rows from Sheet1, newest first."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_RECEIPTS}!A:M",
+            ).execute()
+        )
+        rows = result.get("values", [])
+        if len(rows) <= 1:
+            return []
+        keys = ["date", "upload_time", "uploader", "doc_type", "vendor",
+                "items", "amount", "tax", "doc_number", "drive_url",
+                "confidence", "group", "notes"]
+        data = rows[1:]
+        recent = list(reversed(data[-n:]))
+        out = []
+        for row in recent:
+            padded = row + [""] * (len(keys) - len(row))
+            out.append(dict(zip(keys, padded)))
+        return out
+    except Exception as e:
+        log.error("get_recent_receipts error: %s", e)
+        raise
+
+
+async def get_recent_orders(n: int = 30) -> list[dict[str, Any]]:
+    """Return the last N order rows from Sheet3, newest first."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_ORDERS}!A:G",
+            ).execute()
+        )
+        rows = result.get("values", [])
+        if len(rows) <= 1:
+            return []
+        keys = ["date", "supplier", "items", "amount", "status", "tracking", "creator"]
+        data = rows[1:]
+        recent = list(reversed(data[-n:]))
+        out = []
+        for row in recent:
+            padded = row + [""] * (len(keys) - len(row))
+            out.append(dict(zip(keys, padded)))
+        return out
+    except Exception as e:
+        log.error("get_recent_orders error: %s", e)
+        raise
+
+
 # ─── internal helper ──────────────────────────────────────────────────
 
 async def _append_row(sheet_name: str, row: list) -> int:
