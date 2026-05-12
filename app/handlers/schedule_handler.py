@@ -162,6 +162,11 @@ async def _cmd_understaffed(text: str, group_id: str) -> None:
 # ─── /新增班 YYYY-MM-DD 員工名 HH:MM-HH:MM 店別 [班別] ───────────────
 
 async def _cmd_add_shift(text: str, user_id: str, group_id: str) -> None:
+    from app.config import settings
+    if not settings.is_manager(user_id):
+        await push_text(group_id, "⛔ 此指令限店長使用。")
+        return
+
     from app.services.schedule_service import add_shift, _SHIFT_HOURS, format_shift_list
 
     # Parse: /新增班 2026-05-15 王小明 09:00-17:00 福星店 早班
@@ -286,6 +291,11 @@ async def _cmd_leave_request(text: str, user_id: str, group_id: str) -> None:
 # ─── /核假 員工名 YYYY-MM-DD ──────────────────────────────────────────
 
 async def _cmd_approve_leave(text: str, user_id: str, group_id: str) -> None:
+    from app.config import settings
+    if not settings.is_manager(user_id):
+        await push_text(group_id, "⛔ 此指令限店長使用。")
+        return
+
     from app.services.sheets_service import approve_leave_request
 
     parts = text.split()

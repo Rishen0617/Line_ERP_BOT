@@ -42,6 +42,18 @@ class Settings(BaseSettings):
     # Example: "@ERP" → users type "@ERP 支出 3200" or "@ERP /月報"
     bot_trigger: str = Field("@ERP", alias="BOT_TRIGGER")
 
+    # Comma-separated LINE user IDs with manager privileges (can use /新增班, /核假).
+    # Get a user's ID from LINE Developers Console → Webhook logs, or ask them to
+    # send any message and check the server log for their user_id.
+    # Example: "Uabc123,Udef456"
+    manager_line_user_ids: str = Field("", alias="MANAGER_LINE_USER_IDS")
+
+    def is_manager(self, user_id: str) -> bool:
+        if not self.manager_line_user_ids.strip():
+            return False
+        ids = {uid.strip() for uid in self.manager_line_user_ids.split(",")}
+        return user_id in ids
+
     @cached_property
     def google_service_account_info(self) -> dict:
         return json.loads(self.google_service_account_json)
