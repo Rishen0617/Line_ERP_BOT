@@ -45,6 +45,9 @@ async def handle_help(group_id: str) -> None:
         f"  {prefix}請假 日期 假別 原因\n"
         f"  {prefix}/新增班 日期 員工 時間 店別  （店長）\n"
         f"  {prefix}/核假 員工名 日期            （店長）\n\n"
+        "🌅 管理員指令\n"
+        f"  {prefix}/晨報            立即產生今日晨報\n"
+        f"  {prefix}/晨報 YYYY-MM-DD 指定日期晨報\n\n"
         "─────────────────\n"
         f"{'群組中請以「' + trigger + '」開頭呼叫' if trigger else '直接輸入指令即可'}"
     )

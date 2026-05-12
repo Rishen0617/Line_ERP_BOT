@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     # Example: "@ERP" → users type "@ERP 支出 3200" or "@ERP /月報"
     bot_trigger: str = Field("@ERP", alias="BOT_TRIGGER")
 
+    # Morning report
+    # Secret token to protect POST /api/morning-report/send
+    # Set MORNING_REPORT_SECRET in Railway env vars, then use it as Bearer token in cron job
+    morning_report_secret: str = Field("", alias="MORNING_REPORT_SECRET")
+
     @cached_property
     def google_service_account_info(self) -> dict:
         return json.loads(self.google_service_account_json)

@@ -2,10 +2,12 @@
 
 Endpoints
 ---------
-POST /webhook          LINE Webhook 主入口
-GET  /health           健康檢查（Railway 用）
-GET  /report/monthly   月報摘要（內部管理）
-POST /admin/test-ocr   測試 OCR（傳圖片 base64 回傳解析結果）
+POST /webhook                   LINE Webhook 主入口
+GET  /health                    健康檢查（Railway 用）
+GET  /report/monthly            月報摘要（內部管理）
+POST /admin/test-ocr            測試 OCR（傳圖片 base64 回傳解析結果）
+POST /api/morning-report/send   觸發晨報（Railway Cron 用，需 Bearer token）
+GET  /api/morning-report/preview 預覽晨報內容（不發送）
 """
 from __future__ import annotations
 
@@ -13,7 +15,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -113,3 +115,69 @@ async def dashboard_data(months: int = 6) -> dict[str, Any]:
         orders = []
 
     return {"ok": True, "monthly": monthly, "receipts": receipts, "orders": orders}
+
+
+# ─── Morning report endpoints ─────────────────────────────────────────
+
+def _verify_report_token(authorization: str | None) -> None:
+    """Raise 403 if the Bearer token doesn't match MORNING_REPORT_SECRET."""
+    secret = settings.morning_report_secret
+    if not secret:
+        return   # no secret configured → open access (dev mode)
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=403, detail="Missing Bearer token")
+    token = authorization.removeprefix("Bearer ").strip()
+    if token != secret:
+        raise HTTPException(status_code=403, detail="Invalid token")
+
+
+@app.post("/api/morning-report/send")
+async def morning_report_send(
+    authorization: str | None = Header(default=None),
+    date_str: str | None = None,
+) -> dict[str, Any]:
+    """Trigger morning report push to ADMIN_LINE_USER_ID.
+
+    Called by Railway Cron:
+      Method: POST
+      URL: https://<your-app>/api/morning-report/send
+      Header: Authorization: Bearer <MORNING_REPORT_SECRET>
+
+    Optional query param ?date_str=YYYY-MM-DD to send report for a specific date.
+    """
+    _verify_report_token(authorization)
+    from datetime import date
+    from app.services.morning_report_service import send_morning_report
+
+    ref: date | None = None
+    if date_str:
+        try:
+            ref = date.fromisoformat(date_str)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date_str must be YYYY-MM-DD")
+
+    ok = await send_morning_report(ref)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to send report (check ADMIN_LINE_USER_ID)")
+    return {"ok": True, "message": "morning report sent"}
+
+
+@app.get("/api/morning-report/preview")
+async def morning_report_preview(
+    authorization: str | None = Header(default=None),
+    date_str: str | None = None,
+) -> dict[str, Any]:
+    """Return the morning report text without sending it — useful for testing."""
+    _verify_report_token(authorization)
+    from datetime import date
+    from app.services.morning_report_service import build_report
+
+    ref: date | None = None
+    if date_str:
+        try:
+            ref = date.fromisoformat(date_str)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date_str must be YYYY-MM-DD")
+
+    report = await build_report(ref)
+    return {"ok": True, "report": report}
