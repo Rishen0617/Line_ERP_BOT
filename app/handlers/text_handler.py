@@ -44,6 +44,10 @@ async def process_text(
         from app.handlers.command_handler import handle_command
         await handle_command(text, reply_token, user_id, group_id)
 
+    elif intent == "schedule":
+        from app.handlers.schedule_handler import handle_schedule_command
+        await handle_schedule_command(text, user_id, group_id)
+
     elif intent == "logistics":
         tracking_numbers = extract_tracking_numbers(text)
         from app.services.logistics_service import query_tracking
