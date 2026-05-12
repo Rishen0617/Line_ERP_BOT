@@ -7,12 +7,14 @@ Sheet layout (single Spreadsheet, multiple tabs):
   Sheet2 = 記帳流水帳
   Sheet3 = 訂單追蹤
   Sheet4 = 月報（公式，不由程式寫入）
+  Sheet5 = 班表        (A=日期 B=員工ID C=員工名 D=店別 E=開始 F=結束 G=工時 H=班別 I=狀態 J=備註)
+  Sheet6 = 請假記錄    (A=申請時間 B=員工ID C=員工名 D=假日 E=假別 F=原因 G=狀態 H=審核者 I=備註)
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from functools import lru_cache
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
@@ -23,6 +25,7 @@ from googleapiclient.discovery import build
 from app.config import settings
 from app.models.order import Order
 from app.models.receipt import Receipt
+from app.models.shift import LeaveRequest, Shift
 from app.models.transaction import Transaction
 
 log = logging.getLogger(__name__)
@@ -34,6 +37,8 @@ _TZ = ZoneInfo(settings.bot_timezone)
 SHEET_RECEIPTS = "收據記錄"
 SHEET_LEDGER = "記帳流水帳"
 SHEET_ORDERS = "訂單追蹤"
+SHEET_SCHEDULE = "班表"
+SHEET_LEAVE = "請假記錄"
 
 
 @lru_cache(maxsize=1)
@@ -220,6 +225,148 @@ async def get_recent_orders(n: int = 30) -> list[dict[str, Any]]:
         return out
     except Exception as e:
         log.error("get_recent_orders error: %s", e)
+        raise
+
+
+# ─── Schedule / Shift (Sheet5) ───────────────────────────────────────
+
+async def append_shift(shift: Shift) -> int:
+    """Append one shift row to Sheet5 (班表)."""
+    row = [
+        shift.shift_date.isoformat(),          # A 日期
+        shift.employee_id,                      # B 員工ID
+        shift.employee_name,                    # C 員工名
+        shift.store,                            # D 店別
+        shift.start_time.strftime("%H:%M"),     # E 開始時間
+        shift.end_time.strftime("%H:%M"),       # F 結束時間
+        shift.hours,                            # G 工時
+        shift.shift_type,                       # H 班別
+        shift.status,                           # I 狀態
+        shift.notes or "",                      # J 備註
+    ]
+    return await _append_row(SHEET_SCHEDULE, row)
+
+
+async def get_shifts_by_date(target_date: date) -> list[Shift]:
+    """Return all shifts on *target_date*."""
+    return await get_shifts_by_date_range(target_date, target_date)
+
+
+async def get_shifts_by_date_range(from_date: date, to_date: date) -> list[Shift]:
+    """Return all shifts where from_date ≤ shift_date ≤ to_date."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_SCHEDULE}!A:J",
+            ).execute()
+        )
+        rows = result.get("values", [])[1:]  # skip header
+        shifts: list[Shift] = []
+        for r in rows:
+            if len(r) < 6:
+                continue
+            try:
+                d = date.fromisoformat(r[0])
+            except ValueError:
+                continue
+            if not (from_date <= d <= to_date):
+                continue
+            try:
+                shifts.append(_row_to_shift(r))
+            except Exception:
+                continue
+        return shifts
+    except Exception as e:
+        log.error("get_shifts_by_date_range error: %s", e)
+        raise
+
+
+async def get_employee_shifts_in_range(
+    employee_id: str, from_date: date, to_date: date
+) -> list[Shift]:
+    """Return shifts for a specific employee in the date range."""
+    all_shifts = await get_shifts_by_date_range(from_date, to_date)
+    return [s for s in all_shifts if s.employee_id == employee_id]
+
+
+def _row_to_shift(r: list) -> Shift:
+    from datetime import time as dt_time
+
+    def _t(s: str) -> dt_time:
+        h, m = s.split(":")
+        return dt_time(int(h), int(m))
+
+    return Shift(
+        shift_date=date.fromisoformat(r[0]),
+        employee_id=r[1] if len(r) > 1 else "",
+        employee_name=r[2] if len(r) > 2 else "",
+        store=r[3] if len(r) > 3 else "",
+        start_time=_t(r[4]) if len(r) > 4 else dt_time(0, 0),
+        end_time=_t(r[5]) if len(r) > 5 else dt_time(0, 0),
+        shift_type=r[7] if len(r) > 7 else "早班",    # type: ignore[arg-type]
+        status=r[8] if len(r) > 8 else "正常",         # type: ignore[arg-type]
+        notes=r[9] if len(r) > 9 else None,
+    )
+
+
+# ─── Leave Request (Sheet6) ──────────────────────────────────────────
+
+async def append_leave_request(req: LeaveRequest) -> int:
+    """Append a leave request row to Sheet6 (請假記錄)."""
+    row = [
+        req.apply_time,        # A 申請時間
+        req.employee_id,       # B 員工ID
+        req.employee_name,     # C 員工名
+        req.leave_date.isoformat(),  # D 假日
+        req.leave_type,        # E 假別
+        req.reason,            # F 原因
+        req.status,            # G 狀態
+        req.reviewer,          # H 審核者
+        req.notes,             # I 備註
+    ]
+    return await _append_row(SHEET_LEAVE, row)
+
+
+async def approve_leave_request(
+    employee_name: str, leave_date: date, reviewer: str
+) -> bool:
+    """Find a pending leave row and update status to 核准. Returns True if found."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_LEAVE}!A:I",
+            ).execute()
+        )
+        rows = result.get("values", [])
+        for i, r in enumerate(rows):
+            if len(r) < 7:
+                continue
+            name_match = (r[2] == employee_name)
+            date_match = (r[3] == leave_date.isoformat())
+            pending = (r[6] == "待審")
+            if name_match and date_match and pending:
+                row_num = i + 1  # 1-based
+                # Update G (status) and H (reviewer)
+                await asyncio.to_thread(
+                    lambda: _sheets().values().batchUpdate(
+                        spreadsheetId=settings.google_spreadsheet_id,
+                        body={
+                            "valueInputOption": "USER_ENTERED",
+                            "data": [
+                                {
+                                    "range": f"{SHEET_LEAVE}!G{row_num}:H{row_num}",
+                                    "values": [["核准", reviewer]],
+                                }
+                            ],
+                        },
+                    ).execute()
+                )
+                return True
+        return False
+    except Exception as e:
+        log.error("approve_leave_request error: %s", e)
         raise
 
 
