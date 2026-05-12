@@ -82,12 +82,14 @@ async def line_webhook(
             text = event.message.text
             trigger = settings.bot_trigger.strip()
 
-            # In group chats, require the trigger keyword (if configured)
+            # In group chats, require the trigger keyword (if configured).
+            # Must match the full trigger word: "@ERP_bot /help" matches "@ERP_bot"
+            # but "@ERP /help" does NOT match "@ERP_bot" (checks space/end boundary).
             if is_group and trigger:
-                if not text.startswith(trigger):
+                after = text[len(trigger):]
+                if not text.startswith(trigger) or (after and not after[0].isspace()):
                     continue  # ignore — not addressed to this bot
-                # Strip trigger prefix and leading whitespace before processing
-                text = text[len(trigger):].strip()
+                text = after.strip()
                 if not text:
                     continue
 
