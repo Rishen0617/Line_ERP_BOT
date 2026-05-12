@@ -36,7 +36,11 @@ async def process_text(
     intent = route_text(text)
     log.info("text intent=%s user=%s", intent, user_id)
 
-    if intent == "help":
+    if intent == "myid":
+        name = await _fetch_user_name(user_id)
+        await push_text(group_id, f"👤 {name} 的 LINE User ID：\n{user_id}")
+
+    elif intent == "help":
         from app.handlers.command_handler import handle_help
         await handle_help(group_id)
 
