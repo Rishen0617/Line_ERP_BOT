@@ -32,11 +32,15 @@ async def process_text(
     reply_token: str,
     user_id: str,
     group_id: str,
+    is_group: bool = False,
 ) -> None:
     intent = route_text(text)
     log.info("text intent=%s user=%s", intent, user_id)
 
-    if intent == "myid":
+    if intent == "slash_menu":
+        await _handle_slash_menu(group_id, is_group)
+
+    elif intent == "myid":
         name = await _fetch_user_name(user_id)
         await push_text(group_id, f"👤 {name} 的 LINE User ID：\n{user_id}")
 
@@ -180,6 +184,29 @@ async def _handle_order(
     except Exception as e:
         log.error("append_order failed: %s", e)
         await push_text(group_id, f"⚠️ 訂單寫入失敗：{e}")
+
+
+async def _handle_slash_menu(group_id: str, is_group: bool) -> None:
+    from app.line.reply import push_quick_reply
+
+    trigger = settings.bot_trigger.strip()
+    p = f"{trigger} " if (is_group and trigger) else ""
+
+    items = [
+        ("/月報", f"{p}/月報"),
+        ("/查帳", f"{p}/查帳"),
+        ("/訂單", f"{p}/訂單"),
+        ("/查班表", f"{p}/查班表"),
+        ("/我的工時", f"{p}/我的工時"),
+        ("/今日班表", f"{p}/今日班表"),
+        ("/本週班表", f"{p}/本週班表"),
+        ("/缺工", f"{p}/缺工"),
+        ("/新增班…", f"{p}/新增班 "),
+        ("/核假…", f"{p}/核假 "),
+        ("/myid", f"{p}/myid"),
+        ("/help", f"{p}/help"),
+    ]
+    await push_quick_reply(group_id, "請選擇指令 👇", items)
 
 
 def _quick_parse(text: str) -> tuple[float | None, str, str, str | None]:

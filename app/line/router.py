@@ -25,9 +25,13 @@ def route_text(text: str) -> str:
     """Return intent category string for quick routing.
 
     Returns one of:
-      'command' | 'order' | 'accounting' | 'logistics' | 'schedule' | 'unknown'
+      'slash_menu' | 'command' | 'order' | 'accounting' | 'logistics' | 'schedule' | 'unknown'
     """
     stripped = text.strip()
+
+    # Bare "/" → show command picker
+    if stripped == "/":
+        return "slash_menu"
 
     if any(stripped.startswith(cmd) for cmd in _HELP_COMMANDS):
         return "help"

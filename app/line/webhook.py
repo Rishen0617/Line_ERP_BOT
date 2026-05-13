@@ -99,6 +99,7 @@ async def line_webhook(
                 reply_token=event.reply_token,
                 user_id=user_id,
                 group_id=group_id,
+                is_group=is_group,
             )
 
     return JSONResponse({"ok": True})

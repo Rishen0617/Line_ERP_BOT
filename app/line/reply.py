@@ -9,7 +9,10 @@ from linebot.v3.messaging import (
     AsyncMessagingApi,
     AsyncMessagingApiBlob,
     Configuration,
+    MessageAction,
     PushMessageRequest,
+    QuickReply,
+    QuickReplyItem,
     ReplyMessageRequest,
     TextMessage,
 )
@@ -55,6 +58,36 @@ async def push_text(user_or_group_id: str, text: str) -> None:
         )
     except Exception as e:
         log.warning("push_text to %s failed: %s", user_or_group_id, e)
+
+
+async def push_quick_reply(
+    chat_id: str,
+    intro: str,
+    items: list[tuple[str, str]],
+) -> None:
+    """Send a text message with Quick Reply buttons.
+
+    items: list of (label, text_sent_on_tap) — max 13 items, label max 20 chars.
+    """
+    qr_items = [
+        QuickReplyItem(action=MessageAction(label=label[:20], text=text[:300]))
+        for label, text in items[:13]
+    ]
+    try:
+        api = get_line_api()
+        await api.push_message(
+            PushMessageRequest(
+                to=chat_id,
+                messages=[
+                    TextMessage(
+                        text=intro,
+                        quick_reply=QuickReply(items=qr_items),
+                    )
+                ],
+            )
+        )
+    except Exception as e:
+        log.warning("push_quick_reply to %s failed: %s", chat_id, e)
 
 
 async def download_image(message_id: str) -> bytes:
