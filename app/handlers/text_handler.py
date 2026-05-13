@@ -38,7 +38,10 @@ async def process_text(
 
     if intent == "help":
         from app.handlers.command_handler import handle_help
-        await handle_help(group_id)
+        # Parse optional category: "/help 排班" → category="排班"
+        parts = text.strip().split(maxsplit=1)
+        category = parts[1].strip() if len(parts) > 1 else ""
+        await handle_help(group_id, category)
 
     elif intent == "command":
         from app.handlers.command_handler import handle_command

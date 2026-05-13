@@ -9,67 +9,153 @@ from app.line.reply import push_text
 log = logging.getLogger(__name__)
 
 
-async def handle_help(group_id: str) -> None:
+async def handle_help(group_id: str, category: str = "") -> None:
     from app.config import settings
     trigger = settings.bot_trigger.strip()
     prefix = f"{trigger} " if trigger else ""
+    footer = f"\n{'群組中請以「' + trigger + '」開頭呼叫' if trigger else '直接輸入指令即可'}"
 
-    msg = (
-        "📖 ERP Bot 使用說明\n"
-        "─────────────────\n"
-        "📷 上傳圖片\n"
-        "  直接傳送收據、發票、出貨單照片\n"
-        "  → AI 自動辨識，存入 Sheets\n\n"
-        "💰 文字記帳\n"
-        f"  {prefix}支出 3200 王老吉 進貨\n"
-        f"  {prefix}收入 85000 客戶A 貨款\n"
-        f"  {prefix}應付 12000 台塑 燃料費\n\n"
-        "📦 叫貨訂單\n"
-        f"  {prefix}叫貨 統一 泡麵 100箱\n"
-        f"  {prefix}訂購 聯華 洋芋片 50箱\n\n"
-        "🚚 物流查詢\n"
-        f"  {prefix}AB1234567890（黑貓單號）\n"
-        f"  {prefix}123456789012（7-11 單號）\n\n"
-        "📊 查詢指令\n"
-        f"  {prefix}/月報        當月收支摘要\n"
-        f"  {prefix}/月報 2026-04 指定月份\n"
-        f"  {prefix}/查帳        最近 10 筆流水帳\n"
-        f"  {prefix}/訂單        最近 5 筆訂單\n"
-        f"  {prefix}/查 單號     查詢特定單據\n\n"
-        "📅 排班系統\n"
-        f"  {prefix}/查班表       我的本週班表\n"
-        f"  {prefix}/我的工時     本週工時統計\n"
-        f"  {prefix}/今日班表     今日全店出勤\n"
-        f"  {prefix}/本週班表     本週全店班表\n"
-        f"  {prefix}/缺工         本週缺工預警\n"
-        f"  {prefix}請假 日期 假別 原因\n"
-        f"  {prefix}/新增班 日期 員工 時間 店別  （店長）\n"
-        f"  {prefix}/核假 員工名 日期            （店長）\n\n"
-        "📦 庫存叫貨\n"
-        f"  {prefix}/叫貨 品項 數量 [店別]  快速叫貨\n"
-        f"  {prefix}/到貨 品項 數量 [店別]  確認到貨\n"
-        f"  {prefix}/消耗 品項 數量 [店別]  記錄消耗\n"
-        f"  {prefix}/盤點 品項 數量 [店別]  手動設定庫存\n"
-        f"  {prefix}/庫存               查全部庫存\n"
-        f"  {prefix}/低庫存             低於安全庫存品項\n"
-        f"  {prefix}/採購預測           補貨需求分析\n"
-        f"  {prefix}/安全庫存 品項 數量 設定警戒量\n\n"
-        "🛒 電商行政\n"
-        f"  {prefix}/新增訂單 平台 客戶 金額 品項 [運費]\n"
-        f"  {prefix}/訂單 訂單編號      查詢訂單\n"
-        f"  {prefix}/確認付款 訂單編號  標記已付款\n"
-        f"  {prefix}/出貨 訂單編號 物流 單號\n"
-        f"  {prefix}/退款 訂單編號 原因\n"
-        f"  {prefix}/取消訂單 訂單編號 原因\n"
-        f"  {prefix}/未付款            待付款清單\n"
-        f"  {prefix}/未出貨            待出貨清單\n"
-        f"  {prefix}/電商日報          今日電商摘要\n\n"
-        "🌅 管理員指令\n"
-        f"  {prefix}/晨報            立即產生今日晨報\n"
-        f"  {prefix}/晨報 YYYY-MM-DD 指定日期晨報\n\n"
-        "─────────────────\n"
-        f"{'群組中請以「' + trigger + '」開頭呼叫' if trigger else '直接輸入指令即可'}"
-    )
+    _CATEGORIES = {
+        "記帳": "💰",
+        "排班": "📅",
+        "庫存": "📦",
+        "電商": "🛒",
+        "管理": "🌅",
+        "查詢": "📊",
+    }
+
+    cat = category.strip()
+
+    if not cat:
+        # 首頁：顯示分類選單
+        lines = [
+            "📖 ERP Bot 功能選單",
+            "─────────────────",
+            "輸入 /help [分類] 查看詳細指令：",
+            "",
+            f"  /help 記帳   💰 文字記帳 & OCR",
+            f"  /help 查詢   📊 月報/查帳/物流",
+            f"  /help 排班   📅 班表/請假/缺工",
+            f"  /help 庫存   📦 叫貨/到貨/採購預測",
+            f"  /help 電商   🛒 訂單/付款/出貨",
+            f"  /help 管理   🌅 晨報（管理員）",
+            "",
+            "📷 任何時候直接傳收據照片 → AI 自動辨識",
+            footer,
+        ]
+        await push_text(group_id, "\n".join(lines))
+        return
+
+    if cat in ("記帳",):
+        msg = (
+            "💰 記帳功能\n"
+            "─────────────────\n"
+            "📷 上傳圖片\n"
+            "  直接傳收據/發票/出貨單照片\n"
+            "  → AI 自動辨識金額、廠商、單號\n\n"
+            "✏️ 文字記帳\n"
+            f"  {prefix}支出 3200 王老吉 進貨\n"
+            f"  {prefix}收入 85000 客戶A 貨款\n"
+            f"  {prefix}應付 12000 台塑 燃料費\n"
+            f"  {prefix}應收 50000 客戶B 未付款\n\n"
+            "⚠️ 金額超過 NT$100,000 自動警示管理員"
+            + footer
+        )
+
+    elif cat in ("查詢",):
+        msg = (
+            "📊 查詢指令\n"
+            "─────────────────\n"
+            f"  {prefix}/月報          當月收支摘要\n"
+            f"  {prefix}/月報 2026-04  指定月份\n"
+            f"  {prefix}/查帳          最近 10 筆流水帳\n"
+            f"  {prefix}/訂單          最近 5 筆叫貨訂單\n"
+            f"  {prefix}/查 單號       查詢特定單據\n\n"
+            "🚚 物流查詢（直接貼單號）\n"
+            f"  {prefix}AB1234567890   黑貓宅急便\n"
+            f"  {prefix}123456789012   7-11 統一速達\n"
+            f"  {prefix}RR123456789TW  中華郵政"
+            + footer
+        )
+
+    elif cat in ("排班",):
+        msg = (
+            "📅 排班系統\n"
+            "─────────────────\n"
+            "👤 員工自助\n"
+            f"  {prefix}/查班表              我的本週班表\n"
+            f"  {prefix}/查班表 2026-05-20   指定週班表\n"
+            f"  {prefix}/我的工時            本週工時 & 加班統計\n"
+            f"  {prefix}請假 2026-05-20 特休 家庭出遊\n\n"
+            "👔 店長/行政\n"
+            f"  {prefix}/今日班表 [店別]     今日出勤人員\n"
+            f"  {prefix}/本週班表 [店別]     本週全店班表\n"
+            f"  {prefix}/缺工               本週人力不足日\n"
+            f"  {prefix}/新增班 2026-05-15 王小明 09:00-17:00 福星店 早班\n"
+            f"  {prefix}/核假 王小明 2026-05-20\n\n"
+            "假別：特休 事假 病假 婚假 喪假 補休 其他"
+            + footer
+        )
+
+    elif cat in ("庫存",):
+        msg = (
+            "📦 庫存叫貨系統\n"
+            "─────────────────\n"
+            "🛍 叫貨作業\n"
+            f"  {prefix}/叫貨 青蔥 5斤 福星店   登記叫貨（通知中央工廠）\n"
+            f"  {prefix}/到貨 青蔥 5斤 福星店   確認到貨，庫存自動 +5\n"
+            f"  {prefix}/消耗 醬油 2瓶 信義店   記錄消耗，庫存自動 -2\n"
+            f"  {prefix}/盤點 青蔥 8斤 中央工廠 手動設定庫存（盤點用）\n\n"
+            "📋 庫存查詢\n"
+            f"  {prefix}/庫存               全部品項狀況\n"
+            f"  {prefix}/庫存 青蔥          查單一品項\n"
+            f"  {prefix}/低庫存             低於安全庫存清單\n"
+            f"  {prefix}/採購預測           30日消耗分析+補貨建議\n\n"
+            "⚙️ 設定\n"
+            f"  {prefix}/安全庫存 青蔥 3    設定安全庫存警戒量"
+            + footer
+        )
+
+    elif cat in ("電商",):
+        msg = (
+            "🛒 電商行政系統\n"
+            "─────────────────\n"
+            "📝 建立訂單\n"
+            f"  {prefix}/新增訂單 蝦皮 王小明 580 冰心豆腐鍋 60\n"
+            "  （平台：LINE購物 蝦皮 91App 官網 電話 其他）\n\n"
+            "💳 付款/出貨流程\n"
+            f"  {prefix}/訂單 SP05121234ABCD      查詢訂單\n"
+            f"  {prefix}/確認付款 SP05121234ABCD  標記已付款\n"
+            f"  {prefix}/出貨 SP05121234ABCD 黑貓 AB1234567890\n"
+            f"  {prefix}/退款 SP05121234ABCD 客戶要求退貨\n"
+            f"  {prefix}/取消訂單 SP05121234ABCD 重複下單\n\n"
+            "📊 狀況總覽\n"
+            f"  {prefix}/未付款   所有待付款清單 & 合計\n"
+            f"  {prefix}/未出貨   所有待出貨清單\n"
+            f"  {prefix}/電商日報 今日收單摘要"
+            + footer
+        )
+
+    elif cat in ("管理",):
+        msg = (
+            "🌅 管理員指令\n"
+            "─────────────────\n"
+            "📰 晨報（限管理員）\n"
+            f"  {prefix}/晨報              立即產生今日晨報\n"
+            f"  {prefix}/晨報 2026-05-10   指定日期晨報\n\n"
+            "晨報內容：\n"
+            "  💰 昨日收支（含與上週同日比較）\n"
+            "  📅 今日班表 & 缺工警示\n"
+            "  📋 待審請假件數\n"
+            "  📦 昨日叫貨 & 待到貨筆數\n"
+            "  🔴 低庫存警示（有低庫存時顯示）"
+            + footer
+        )
+
+    else:
+        cats = "、".join(_CATEGORIES.keys())
+        msg = f"找不到分類「{cat}」\n可用分類：{cats}\n\n輸入 /help 查看選單"
+
     await push_text(group_id, msg)
 
 
