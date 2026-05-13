@@ -20,6 +20,14 @@ _SCHEDULE_COMMANDS = {
 }
 _LEAVE_KEYWORDS = {"請假"}
 _ADMIN_COMMANDS = {"/晨報"}
+_ECOMMERCE_COMMANDS = {
+    "/新增訂單", "/訂單", "/確認付款", "/出貨",
+    "/退款", "/取消訂單", "/未付款", "/未出貨", "/電商日報",
+}
+_INVENTORY_COMMANDS = {
+    "/叫貨", "/到貨", "/消耗", "/盤點",
+    "/安全庫存", "/庫存", "/低庫存", "/採購預測",
+}
 
 
 def route_text(text: str) -> str:
@@ -42,6 +50,12 @@ def route_text(text: str) -> str:
 
     if any(stripped.startswith(cmd) for cmd in _ADMIN_COMMANDS):
         return "admin"
+
+    if any(stripped.startswith(cmd) for cmd in _ECOMMERCE_COMMANDS):
+        return "ecommerce"
+
+    if any(stripped.startswith(cmd) for cmd in _INVENTORY_COMMANDS):
+        return "inventory"
 
     if any(stripped.startswith(cmd) for cmd in _SCHEDULE_COMMANDS):
         return "schedule"

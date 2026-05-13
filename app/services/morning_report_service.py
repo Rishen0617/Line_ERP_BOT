@@ -37,9 +37,10 @@ async def build_report(ref_date: date | None = None) -> str:
     schedule_task = asyncio.create_task(_schedule_section(today))
     pending_task = asyncio.create_task(_pending_section())
     order_task = asyncio.create_task(_order_section(yesterday))
+    inventory_task = asyncio.create_task(_inventory_section())
 
-    finance, schedule, pending, order = await asyncio.gather(
-        finance_task, schedule_task, pending_task, order_task,
+    finance, schedule, pending, order, inventory = await asyncio.gather(
+        finance_task, schedule_task, pending_task, order_task, inventory_task,
         return_exceptions=True,
     )
 
@@ -48,11 +49,11 @@ async def build_report(ref_date: date | None = None) -> str:
         ("schedule", schedule),
         ("pending", pending),
         ("order", order),
+        ("inventory", inventory),
     ]:
         if isinstance(result, Exception):
             log.warning("morning report section %s failed: %s", label, result)
-            sections.append(f"（{label} 資料取得失敗）")
-        else:
+        elif result:
             sections.append(result)  # type: ignore[arg-type]
 
     sections.append("━━━━━━━━━━━━━━━")
@@ -244,3 +245,22 @@ async def _order_section(yesterday: date) -> str:
     except Exception as e:
         log.warning("_order_section error: %s", e)
         return "📦 補貨狀況（資料取得失敗）"
+
+
+async def _inventory_section() -> str:
+    """低庫存品項警示（只有有低庫存時才顯示）."""
+    try:
+        from app.services.inventory_service import get_low_stock_items
+        low = await get_low_stock_items()
+        if not low:
+            return ""   # 庫存正常時不佔版面
+        lines = [f"🔴 低庫存警示（{len(low)} 項需補貨）"]
+        for it in low:
+            lines.append(
+                f"  {it.name}：{it.current_stock:.1f}/{it.safety_stock:.1f} {it.unit}"
+            )
+        lines.append("輸入 /採購預測 查看補貨建議")
+        return "\n".join(lines)
+    except Exception as e:
+        log.warning("_inventory_section error: %s", e)
+        return ""

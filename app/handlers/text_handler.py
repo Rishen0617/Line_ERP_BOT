@@ -46,7 +46,10 @@ async def process_text(
 
     elif intent == "help":
         from app.handlers.command_handler import handle_help
-        await handle_help(group_id)
+        # Parse optional category: "/help 排班" → category="排班"
+        parts = text.strip().split(maxsplit=1)
+        category = parts[1].strip() if len(parts) > 1 else ""
+        await handle_help(group_id, category)
 
     elif intent == "command":
         from app.handlers.command_handler import handle_command
@@ -54,6 +57,14 @@ async def process_text(
 
     elif intent == "admin":
         await _handle_admin(text, user_id, group_id)
+
+    elif intent == "ecommerce":
+        from app.handlers.ecommerce_handler import handle_ecommerce_command
+        await handle_ecommerce_command(text, user_id, group_id)
+
+    elif intent == "inventory":
+        from app.handlers.inventory_handler import handle_inventory_command
+        await handle_inventory_command(text, user_id, group_id)
 
     elif intent == "schedule":
         from app.handlers.schedule_handler import handle_schedule_command

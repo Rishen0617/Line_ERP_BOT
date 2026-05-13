@@ -9,6 +9,11 @@ Sheet layout (single Spreadsheet, multiple tabs):
   Sheet4 = 月報（公式，不由程式寫入）
   Sheet5 = 班表        (A=日期 B=員工ID C=員工名 D=店別 E=開始 F=結束 G=工時 H=班別 I=狀態 J=備註)
   Sheet6 = 請假記錄    (A=申請時間 B=員工ID C=員工名 D=假日 E=假別 F=原因 G=狀態 H=審核者 I=備註)
+  Sheet7 = 電商訂單    (A=建立時間 B=訂單編號 C=平台 D=客戶 E=電話 F=地址 G=品項
+                        H=商品金額 I=運費 J=總金額 K=付款方式 L=付款狀態
+                        M=物流公司 N=物流單號 O=出貨狀態 P=備註 Q=建立者)
+  Sheet8 = 庫存台帳    (A=品項 B=規格 C=單位 D=安全庫存 E=目前庫存 F=最後更新 G=分類 H=供應商)
+  Sheet9 = 庫存異動    (A=時間 B=品項 C=異動類型 D=數量 E=單位 F=店別 G=關聯單號 H=操作者 I=備註)
 """
 from __future__ import annotations
 
@@ -23,6 +28,8 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 from app.config import settings
+from app.models.ecommerce import EcommerceOrder
+from app.models.inventory import InventoryItem, StockMovement
 from app.models.order import Order
 from app.models.receipt import Receipt
 from app.models.shift import LeaveRequest, Shift
@@ -39,6 +46,23 @@ SHEET_LEDGER = "記帳流水帳"
 SHEET_ORDERS = "訂單追蹤"
 SHEET_SCHEDULE = "班表"
 SHEET_LEAVE = "請假記錄"
+SHEET_ECOMMERCE = "電商訂單"
+SHEET_INVENTORY = "庫存台帳"
+SHEET_MOVEMENTS = "庫存異動"
+
+# Inventory column indices (0-based, Sheet8)
+_INV_COL_NAME = 0
+_INV_COL_STOCK = 4
+_INV_COL_SAFETY = 3
+_INV_COL_UPDATED = 5
+
+# Column indices for 電商訂單 (0-based)
+_EC_COL_ORDER_NO = 1
+_EC_COL_PAY_STATUS = 11
+_EC_COL_LOGISTICS = 12
+_EC_COL_TRACKING = 13
+_EC_COL_SHIP_STATUS = 14
+_EC_COL_NOTES = 15
 
 
 @lru_cache(maxsize=1)
@@ -390,3 +414,387 @@ async def _append_row(sheet_name: str, row: list) -> int:
         return int(updated.split("A")[-1].split(":")[0])
     except (ValueError, IndexError):
         return 0
+
+
+# ─── E-commerce Orders (Sheet7) ───────────────────────────────────────
+
+async def append_ecommerce_order(order: EcommerceOrder) -> int:
+    """Append one e-commerce order row to Sheet7 (電商訂單)."""
+    row = [
+        order.created_at,           # A 建立時間
+        order.order_number,         # B 訂單編號
+        order.platform,             # C 平台
+        order.customer_name,        # D 客戶
+        order.customer_phone,       # E 電話
+        order.shipping_address,     # F 地址
+        order.items_summary,        # G 品項
+        order.subtotal,             # H 商品金額
+        order.shipping_fee,         # I 運費
+        order.total_amount,         # J 總金額
+        order.payment_method,       # K 付款方式
+        order.payment_status,       # L 付款狀態
+        order.logistics_company,    # M 物流公司
+        order.tracking_number,      # N 物流單號
+        order.ship_status,          # O 出貨狀態
+        order.notes,                # P 備註
+        order.created_by,           # Q 建立者
+    ]
+    return await _append_row(SHEET_ECOMMERCE, row)
+
+
+async def find_ecommerce_order(order_number: str) -> Optional[EcommerceOrder]:
+    """Find an order by order_number in Sheet7."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_ECOMMERCE}!A:Q",
+            ).execute()
+        )
+        rows = result.get("values", [])[1:]
+        for r in rows:
+            if len(r) > 1 and r[1] == order_number:
+                return _row_to_ecommerce_order(r)
+        return None
+    except Exception as e:
+        log.error("find_ecommerce_order error: %s", e)
+        raise
+
+
+async def update_ecommerce_order_fields(
+    order_number: str, fields: dict
+) -> bool:
+    """Find the order row and patch specific columns. Returns True if found."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_ECOMMERCE}!A:Q",
+            ).execute()
+        )
+        rows = result.get("values", [])
+        for i, r in enumerate(rows):
+            if len(r) > 1 and r[1] == order_number:
+                row_num = i + 1  # 1-based
+                updates = []
+
+                col_map = {
+                    "payment_status": _EC_COL_PAY_STATUS,
+                    "logistics_company": _EC_COL_LOGISTICS,
+                    "tracking_number": _EC_COL_TRACKING,
+                    "ship_status": _EC_COL_SHIP_STATUS,
+                }
+                for field, col_idx in col_map.items():
+                    if field in fields:
+                        col_letter = chr(ord("A") + col_idx)
+                        updates.append({
+                            "range": f"{SHEET_ECOMMERCE}!{col_letter}{row_num}",
+                            "values": [[fields[field]]],
+                        })
+
+                # Append to notes column
+                if "notes_append" in fields:
+                    current_notes = r[_EC_COL_NOTES] if len(r) > _EC_COL_NOTES else ""
+                    new_notes = (current_notes + " " + fields["notes_append"]).strip()
+                    col_letter = chr(ord("A") + _EC_COL_NOTES)
+                    updates.append({
+                        "range": f"{SHEET_ECOMMERCE}!{col_letter}{row_num}",
+                        "values": [[new_notes]],
+                    })
+
+                if updates:
+                    await asyncio.to_thread(
+                        lambda: _sheets().values().batchUpdate(
+                            spreadsheetId=settings.google_spreadsheet_id,
+                            body={"valueInputOption": "USER_ENTERED", "data": updates},
+                        ).execute()
+                    )
+                return True
+        return False
+    except Exception as e:
+        log.error("update_ecommerce_order_fields error: %s", e)
+        raise
+
+
+async def get_ecommerce_orders_by_status(
+    payment_status: str | None = None,
+    ship_status: str | None = None,
+) -> list[EcommerceOrder]:
+    """Return orders matching the given status filter(s)."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_ECOMMERCE}!A:Q",
+            ).execute()
+        )
+        rows = result.get("values", [])[1:]
+        orders = []
+        for r in rows:
+            try:
+                o = _row_to_ecommerce_order(r)
+            except Exception:
+                continue
+            if payment_status and o.payment_status != payment_status:
+                continue
+            if ship_status and o.ship_status != ship_status:
+                continue
+            orders.append(o)
+        return orders
+    except Exception as e:
+        log.error("get_ecommerce_orders_by_status error: %s", e)
+        raise
+
+
+async def get_ecommerce_orders_by_date(target_date: str) -> list[EcommerceOrder]:
+    """Return orders created on *target_date* (YYYY-MM-DD)."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_ECOMMERCE}!A:Q",
+            ).execute()
+        )
+        rows = result.get("values", [])[1:]
+        orders = []
+        for r in rows:
+            if not r or not str(r[0]).startswith(target_date):
+                continue
+            try:
+                orders.append(_row_to_ecommerce_order(r))
+            except Exception:
+                continue
+        return orders
+    except Exception as e:
+        log.error("get_ecommerce_orders_by_date error: %s", e)
+        raise
+
+
+def _row_to_ecommerce_order(r: list) -> EcommerceOrder:
+    def _get(idx: int) -> str:
+        return r[idx] if len(r) > idx else ""
+
+    def _float(idx: int) -> float:
+        try:
+            return float(_get(idx))
+        except (ValueError, TypeError):
+            return 0.0
+
+    return EcommerceOrder(
+        created_at=_get(0),
+        order_number=_get(1),
+        platform=_get(2) or "其他",           # type: ignore[arg-type]
+        customer_name=_get(3),
+        customer_phone=_get(4),
+        shipping_address=_get(5),
+        items_summary=_get(6),
+        subtotal=_float(7),
+        shipping_fee=_float(8),
+        total_amount=_float(9),
+        payment_method=_get(10) or "其他",    # type: ignore[arg-type]
+        payment_status=_get(11) or "未付款",   # type: ignore[arg-type]
+        logistics_company=_get(12),
+        tracking_number=_get(13),
+        ship_status=_get(14) or "待出貨",       # type: ignore[arg-type]
+        notes=_get(15),
+        created_by=_get(16),
+    )
+
+
+# ─── Inventory Ledger (Sheet8) ────────────────────────────────────────
+
+async def get_all_inventory_items() -> list[InventoryItem]:
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_INVENTORY}!A:H",
+            ).execute()
+        )
+        rows = result.get("values", [])[1:]
+        items = []
+        for r in rows:
+            if not r or not r[0]:
+                continue
+            try:
+                items.append(_row_to_inventory(r))
+            except Exception:
+                continue
+        return items
+    except Exception as e:
+        log.error("get_all_inventory_items error: %s", e)
+        raise
+
+
+async def get_inventory_item(name: str) -> Optional[InventoryItem]:
+    items = await get_all_inventory_items()
+    for it in items:
+        if it.name == name:
+            return it
+    return None
+
+
+async def update_inventory_stock(
+    name: str, delta: float = 0.0, absolute: float | None = None
+) -> InventoryItem:
+    """Find item row and update current stock (E) and last-updated (F)."""
+    from zoneinfo import ZoneInfo
+    from datetime import datetime
+    tz = ZoneInfo(settings.bot_timezone)
+    now_str = datetime.now(tz).strftime("%Y-%m-%d %H:%M")
+
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_INVENTORY}!A:H",
+            ).execute()
+        )
+        rows = result.get("values", [])
+        for i, r in enumerate(rows):
+            if r and r[0] == name:
+                row_num = i + 1
+                cur = float(r[_INV_COL_STOCK]) if len(r) > _INV_COL_STOCK and r[_INV_COL_STOCK] else 0.0
+                new_stock = absolute if absolute is not None else cur + delta
+                await asyncio.to_thread(
+                    lambda: _sheets().values().batchUpdate(
+                        spreadsheetId=settings.google_spreadsheet_id,
+                        body={
+                            "valueInputOption": "USER_ENTERED",
+                            "data": [
+                                {"range": f"{SHEET_INVENTORY}!E{row_num}", "values": [[new_stock]]},
+                                {"range": f"{SHEET_INVENTORY}!F{row_num}", "values": [[now_str]]},
+                            ],
+                        },
+                    ).execute()
+                )
+                item = _row_to_inventory(r)
+                item.current_stock = new_stock
+                item.last_updated = now_str
+                return item
+
+        # Item not found → create a new row
+        new_stock = absolute if absolute is not None else max(0.0, delta)
+        new_row = [name, "", "", 0, new_stock, now_str, "", ""]
+        await _append_row(SHEET_INVENTORY, new_row)
+        return InventoryItem(name=name, current_stock=new_stock, last_updated=now_str)
+
+    except Exception as e:
+        log.error("update_inventory_stock error: %s", e)
+        raise
+
+
+async def update_inventory_safety_stock(name: str, level: float) -> InventoryItem:
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_INVENTORY}!A:H",
+            ).execute()
+        )
+        rows = result.get("values", [])
+        for i, r in enumerate(rows):
+            if r and r[0] == name:
+                row_num = i + 1
+                await asyncio.to_thread(
+                    lambda: _sheets().values().update(
+                        spreadsheetId=settings.google_spreadsheet_id,
+                        range=f"{SHEET_INVENTORY}!D{row_num}",
+                        valueInputOption="USER_ENTERED",
+                        body={"values": [[level]]},
+                    ).execute()
+                )
+                item = _row_to_inventory(r)
+                item.safety_stock = level
+                return item
+
+        # New item
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        now_str = datetime.now(ZoneInfo(settings.bot_timezone)).strftime("%Y-%m-%d %H:%M")
+        new_row = [name, "", "", level, 0, now_str, "", ""]
+        await _append_row(SHEET_INVENTORY, new_row)
+        return InventoryItem(name=name, safety_stock=level)
+    except Exception as e:
+        log.error("update_inventory_safety_stock error: %s", e)
+        raise
+
+
+def _row_to_inventory(r: list) -> InventoryItem:
+    def _g(i: int) -> str:
+        return r[i] if len(r) > i else ""
+
+    def _f(i: int) -> float:
+        try:
+            return float(_g(i))
+        except (ValueError, TypeError):
+            return 0.0
+
+    return InventoryItem(
+        name=_g(0),
+        spec=_g(1),
+        unit=_g(2) or "個",
+        safety_stock=_f(3),
+        current_stock=_f(4),
+        last_updated=_g(5),
+        category=_g(6),
+        supplier=_g(7),
+    )
+
+
+# ─── Stock Movements (Sheet9) ─────────────────────────────────────────
+
+async def append_stock_movement(m: StockMovement) -> int:
+    row = [
+        m.moved_at,         # A 時間
+        m.item_name,        # B 品項
+        m.movement_type,    # C 異動類型
+        m.quantity,         # D 數量
+        m.unit,             # E 單位
+        m.store,            # F 店別
+        m.ref_order_no,     # G 關聯單號
+        m.operator,         # H 操作者
+        m.notes,            # I 備註
+    ]
+    return await _append_row(SHEET_MOVEMENTS, row)
+
+
+async def get_stock_movements_since(since_date: str) -> list[StockMovement]:
+    """Return all movements where moved_at >= since_date (YYYY-MM-DD prefix match)."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_MOVEMENTS}!A:I",
+            ).execute()
+        )
+        rows = result.get("values", [])[1:]
+        movements = []
+        for r in rows:
+            if not r or str(r[0]) < since_date:
+                continue
+            try:
+                movements.append(_row_to_movement(r))
+            except Exception:
+                continue
+        return movements
+    except Exception as e:
+        log.error("get_stock_movements_since error: %s", e)
+        raise
+
+
+def _row_to_movement(r: list) -> StockMovement:
+    def _g(i: int) -> str:
+        return r[i] if len(r) > i else ""
+
+    return StockMovement(
+        moved_at=_g(0),
+        item_name=_g(1),
+        movement_type=_g(2) or "叫貨",  # type: ignore[arg-type]
+        quantity=float(_g(3) or 0),
+        unit=_g(4),
+        store=_g(5),
+        ref_order_no=_g(6),
+        operator=_g(7),
+        notes=_g(8),
+    )
