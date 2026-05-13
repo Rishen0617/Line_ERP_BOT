@@ -81,20 +81,22 @@ async def dashboard():
 
 @app.get("/api/dashboard/data")
 async def dashboard_data(months: int = 6) -> dict[str, Any]:
-    """Aggregate data for dashboard: monthly summaries + recent rows."""
+    """Aggregate data for dashboard: financial + inventory + ecommerce + schedule."""
+    import asyncio
     from datetime import date
     from app.services.sheets_service import (
-        get_monthly_summary, get_recent_receipts, get_recent_orders
+        get_monthly_summary, get_recent_receipts, get_recent_orders,
+        get_all_inventory_items, get_ecommerce_orders_by_status,
+        get_shifts_by_date, get_shifts_by_date_range,
     )
+    from app.services.schedule_service import week_range
+
     today = date.today()
+
+    # ── Monthly summaries ────────────────────────────────────────────
     monthly = []
     for i in range(months - 1, -1, -1):
-        offset = today.month - 1 - i
-        y = today.year + offset // 12
-        m = offset % 12 + 1
-        # proper month/year rollback
-        y = today.year
-        m = today.month - i
+        y, m = today.year, today.month - i
         while m <= 0:
             m += 12
             y -= 1
@@ -105,16 +107,68 @@ async def dashboard_data(months: int = 6) -> dict[str, Any]:
                  "payable": 0, "receivable": 0, "net": 0}
         monthly.append(s)
 
-    try:
-        receipts = await get_recent_receipts(30)
-    except Exception:
-        receipts = []
-    try:
-        orders = await get_recent_orders(30)
-    except Exception:
-        orders = []
+    # ── Parallel fetch ───────────────────────────────────────────────
+    async def safe(coro, default):
+        try:
+            return await coro
+        except Exception:
+            return default
 
-    return {"ok": True, "monthly": monthly, "receipts": receipts, "orders": orders}
+    monday, sunday = week_range(today)
+
+    receipts, proc_orders, inventory, ec_unpaid, ec_unshipped, today_shifts, week_shifts = \
+        await asyncio.gather(
+            safe(get_recent_receipts(30), []),
+            safe(get_recent_orders(30), []),
+            safe(get_all_inventory_items(), []),
+            safe(get_ecommerce_orders_by_status(payment_status="未付款"), []),
+            safe(get_ecommerce_orders_by_status(ship_status="待出貨"), []),
+            safe(get_shifts_by_date(today), []),
+            safe(get_shifts_by_date_range(monday, sunday), []),
+        )
+
+    # Serialize inventory items
+    inv_data = [
+        {
+            "name": it.item_name, "unit": it.unit,
+            "current": it.current_stock, "safety": it.safety_stock,
+            "is_low": it.is_low, "category": it.category,
+            "supplier": it.preferred_supplier,
+        }
+        for it in inventory
+    ]
+
+    # Serialize ecommerce orders
+    def ec_to_dict(o):
+        return {
+            "created_at": o.created_at, "order_number": o.order_number,
+            "platform": o.platform, "customer": o.customer_name,
+            "items": o.items_summary, "total": o.total_amount,
+            "payment_status": o.payment_status, "ship_status": o.ship_status,
+            "tracking": o.tracking_number,
+        }
+
+    # Serialize shifts
+    def shift_to_dict(s):
+        return {
+            "date": s.shift_date.isoformat(),
+            "name": s.employee_name, "store": s.store,
+            "start": s.start_time.strftime("%H:%M"),
+            "end": s.end_time.strftime("%H:%M"),
+            "hours": s.hours, "type": s.shift_type, "status": s.status,
+        }
+
+    return {
+        "ok": True,
+        "monthly": monthly,
+        "receipts": receipts,
+        "orders": proc_orders,
+        "inventory": inv_data,
+        "ecommerce_unpaid": [ec_to_dict(o) for o in ec_unpaid],
+        "ecommerce_unshipped": [ec_to_dict(o) for o in ec_unshipped],
+        "today_shifts": [shift_to_dict(s) for s in today_shifts],
+        "week_shifts": [shift_to_dict(s) for s in week_shifts],
+    }
 
 
 # ─── Morning report endpoints ─────────────────────────────────────────

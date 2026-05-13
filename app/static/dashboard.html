@@ -3,296 +3,607 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SME Bot 控制台</title>
+<title>ERP 管理控制台</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-         background: #f0f2f5; color: #1a1a2e; }
-  header { background: #16213e; color: #fff; padding: 16px 24px;
-           display: flex; align-items: center; gap: 12px; }
-  header h1 { font-size: 1.2rem; font-weight: 600; }
-  header span { font-size: 0.85rem; opacity: 0.6; margin-left: auto; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-          gap: 16px; padding: 20px 24px 0; }
-  .card { background: #fff; border-radius: 12px; padding: 18px 20px;
-          box-shadow: 0 1px 4px rgba(0,0,0,.08); }
-  .card .label { font-size: 0.75rem; color: #888; margin-bottom: 6px; }
-  .card .value { font-size: 1.5rem; font-weight: 700; }
-  .card .value.green { color: #22c55e; }
-  .card .value.red { color: #ef4444; }
-  .card .value.blue { color: #3b82f6; }
-  .card .value.amber { color: #f59e0b; }
-  .section { margin: 20px 24px; }
-  .section h2 { font-size: 0.9rem; font-weight: 600; color: #555;
-                text-transform: uppercase; letter-spacing: .05em; margin-bottom: 12px; }
-  .chart-wrap { background: #fff; border-radius: 12px; padding: 20px;
-                box-shadow: 0 1px 4px rgba(0,0,0,.08); }
-  table { width: 100%; border-collapse: collapse; background: #fff;
-          border-radius: 12px; overflow: hidden;
-          box-shadow: 0 1px 4px rgba(0,0,0,.08); font-size: 0.85rem; }
-  thead th { background: #16213e; color: #fff; padding: 10px 14px;
-             text-align: left; font-weight: 500; }
-  tbody tr:nth-child(even) { background: #f8f9fb; }
-  tbody td { padding: 9px 14px; border-bottom: 1px solid #f0f0f0; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 99px;
-           font-size: 0.75rem; font-weight: 500; }
-  .badge-high { background: #dcfce7; color: #15803d; }
-  .badge-mid  { background: #fef9c3; color: #a16207; }
-  .badge-low  { background: #fee2e2; color: #b91c1c; }
-  .badge-done { background: #dbeafe; color: #1d4ed8; }
-  .badge-ship { background: #ede9fe; color: #6d28d9; }
-  .badge-pend { background: #f3f4f6; color: #374151; }
-  a { color: #3b82f6; text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  .empty { text-align: center; color: #aaa; padding: 24px; }
-  .thumb { width: 56px; height: 56px; object-fit: cover; border-radius: 6px;
-           cursor: pointer; border: 1px solid #e5e7eb; transition: transform .15s; }
-  .thumb:hover { transform: scale(1.08); }
-  /* Lightbox */
-  #lb { display:none; position:fixed; inset:0; background:rgba(0,0,0,.85);
-        z-index:9999; align-items:center; justify-content:center; }
-  #lb.open { display:flex; }
-  #lb img { max-width:90vw; max-height:90vh; border-radius:8px;
-            box-shadow:0 8px 32px rgba(0,0,0,.6); }
-  #lb-close { position:fixed; top:20px; right:28px; color:#fff; font-size:2rem;
-              cursor:pointer; line-height:1; }
-  #loading { text-align: center; padding: 60px; color: #888; font-size: 1.1rem; }
-  #content { display: none; }
-  .refresh-btn { background: #3b82f6; color: #fff; border: none; border-radius: 6px;
-                 padding: 6px 14px; cursor: pointer; font-size: 0.8rem; margin-left: auto; }
-  .refresh-btn:hover { background: #2563eb; }
-  @media (max-width: 600px) {
-    .grid { padding: 12px; }
-    .section { margin: 12px; }
-    tbody td, thead th { padding: 8px 10px; }
-  }
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif;
+     background:#f0f2f5;color:#1a1a2e;min-height:100vh}
+
+/* ── Header ── */
+header{background:linear-gradient(135deg,#1e3a5f,#16213e);color:#fff;
+       padding:14px 24px;display:flex;align-items:center;gap:12px;
+       box-shadow:0 2px 8px rgba(0,0,0,.25);position:sticky;top:0;z-index:100}
+header .logo{font-size:1.4rem}
+header h1{font-size:1.1rem;font-weight:700;letter-spacing:.02em}
+header .meta{margin-left:auto;display:flex;align-items:center;gap:10px}
+header .meta span{font-size:0.78rem;opacity:.65}
+.refresh-btn{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);
+             border-radius:6px;padding:5px 12px;cursor:pointer;font-size:0.8rem;transition:.15s}
+.refresh-btn:hover{background:rgba(255,255,255,.28)}
+
+/* ── Tabs ── */
+.tab-bar{display:flex;gap:0;background:#fff;border-bottom:2px solid #e5e7eb;
+         padding:0 20px;position:sticky;top:53px;z-index:99;
+         box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.tab{padding:12px 20px;font-size:0.88rem;font-weight:500;color:#6b7280;
+     cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;
+     transition:.15s;white-space:nowrap;user-select:none}
+.tab:hover{color:#1e3a5f}
+.tab.active{color:#1e3a5f;border-bottom-color:#1e3a5f;font-weight:700}
+
+/* ── KPI grid ── */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+          gap:14px;padding:20px 22px 0}
+.kpi-card{background:#fff;border-radius:12px;padding:16px 18px;
+          box-shadow:0 1px 4px rgba(0,0,0,.07);position:relative;overflow:hidden}
+.kpi-card::before{content:'';position:absolute;top:0;left:0;width:4px;height:100%;
+                  background:var(--accent,#94a3b8);border-radius:4px 0 0 4px}
+.kpi-card.green{--accent:#22c55e}.kpi-card.red{--accent:#ef4444}
+.kpi-card.blue{--accent:#3b82f6}.kpi-card.amber{--accent:#f59e0b}
+.kpi-card.purple{--accent:#8b5cf6}.kpi-card.teal{--accent:#14b8a6}
+.kpi-label{font-size:0.72rem;color:#9ca3af;margin-bottom:5px;font-weight:500;
+           text-transform:uppercase;letter-spacing:.04em}
+.kpi-value{font-size:1.45rem;font-weight:800;color:#111827}
+.kpi-sub{font-size:0.72rem;color:#9ca3af;margin-top:3px}
+
+/* ── Section ── */
+.section{margin:18px 22px}
+.section-title{font-size:0.78rem;font-weight:700;color:#6b7280;
+               text-transform:uppercase;letter-spacing:.06em;
+               margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.chart-wrap{background:#fff;border-radius:12px;padding:18px;
+            box-shadow:0 1px 4px rgba(0,0,0,.07);height:250px}
+
+/* ── Tables ── */
+.table-wrap{background:#fff;border-radius:12px;overflow:hidden;
+            box-shadow:0 1px 4px rgba(0,0,0,.07);overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:0.83rem;min-width:480px}
+thead th{background:#1e3a5f;color:#fff;padding:10px 14px;text-align:left;
+         font-weight:500;font-size:0.8rem;white-space:nowrap}
+tbody tr:nth-child(even){background:#f8fafc}
+tbody tr:hover{background:#eff6ff}
+tbody td{padding:9px 14px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+.empty{text-align:center;color:#cbd5e1;padding:28px;font-size:0.9rem}
+
+/* ── Badges ── */
+.badge{display:inline-flex;align-items:center;padding:2px 9px;border-radius:99px;
+       font-size:0.72rem;font-weight:600;white-space:nowrap}
+.b-green{background:#dcfce7;color:#15803d}
+.b-red{background:#fee2e2;color:#b91c1c}
+.b-amber{background:#fef9c3;color:#a16207}
+.b-blue{background:#dbeafe;color:#1d4ed8}
+.b-purple{background:#ede9fe;color:#6d28d9}
+.b-gray{background:#f1f5f9;color:#475569}
+.b-teal{background:#ccfbf1;color:#0f766e}
+
+/* ── Inventory alert strip ── */
+.alert-strip{background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;
+             padding:12px 16px;margin:18px 22px 0;display:flex;gap:10px;
+             align-items:flex-start;font-size:0.85rem;color:#92400e}
+.alert-strip.hidden{display:none}
+.alert-strip .icon{font-size:1.1rem;margin-top:1px}
+
+/* ── Tab panels ── */
+.tab-panel{display:none}.tab-panel.active{display:block}
+
+/* ── Lightbox ── */
+#lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);
+    z-index:9999;align-items:center;justify-content:center}
+#lb.open{display:flex}
+#lb img{max-width:90vw;max-height:90vh;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.6)}
+#lb-close{position:fixed;top:18px;right:26px;color:#fff;font-size:2rem;cursor:pointer}
+.thumb{width:48px;height:48px;object-fit:cover;border-radius:6px;cursor:pointer;
+       border:1px solid #e2e8f0;transition:.15s}
+.thumb:hover{transform:scale(1.1)}
+
+/* ── Misc ── */
+a{color:#3b82f6;text-decoration:none}
+a:hover{text-decoration:underline}
+#loading{text-align:center;padding:80px;color:#94a3b8;font-size:1rem}
+.pb{padding-bottom:32px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+@media(max-width:680px){
+  .tab{padding:10px 12px;font-size:0.8rem}
+  .kpi-grid{padding:12px 14px 0;gap:10px}
+  .section{margin:14px}
+  .two-col{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
 
 <header>
-  <div>📊</div>
-  <h1>SME Bot 控制台</h1>
-  <button class="refresh-btn" onclick="loadData()">重新整理</button>
-  <span id="last-update"></span>
+  <div class="logo">📊</div>
+  <h1>ERP 管理控制台</h1>
+  <div class="meta">
+    <span id="last-update"></span>
+    <button class="refresh-btn" onclick="loadData()">↻ 重新整理</button>
+  </div>
 </header>
 
-<!-- Lightbox -->
+<div class="tab-bar">
+  <div class="tab active" onclick="switchTab('finance')">💰 財務</div>
+  <div class="tab" onclick="switchTab('inventory')">📦 庫存</div>
+  <div class="tab" onclick="switchTab('ecommerce')">🛒 電商</div>
+  <div class="tab" onclick="switchTab('schedule')">📅 排班</div>
+</div>
+
 <div id="lb">
   <span id="lb-close" onclick="closeLb()">✕</span>
   <img id="lb-img" src="" alt="">
 </div>
 
 <div id="loading">載入中…</div>
+<div id="content" style="display:none">
 
-<div id="content">
-  <!-- KPI cards -->
-  <div class="grid">
-    <div class="card">
-      <div class="label">本月收入</div>
-      <div class="value green" id="kpi-income">—</div>
+  <!-- ───────────── TAB: 財務 ───────────── -->
+  <div class="tab-panel active" id="panel-finance">
+    <div class="kpi-grid">
+      <div class="kpi-card green">
+        <div class="kpi-label">本月收入</div>
+        <div class="kpi-value" id="k-income">—</div>
+      </div>
+      <div class="kpi-card red">
+        <div class="kpi-label">本月支出</div>
+        <div class="kpi-value" id="k-expense">—</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">本月淨額</div>
+        <div class="kpi-value" id="k-net">—</div>
+      </div>
+      <div class="kpi-card amber">
+        <div class="kpi-label">應付帳款</div>
+        <div class="kpi-value" id="k-payable">—</div>
+      </div>
+      <div class="kpi-card teal">
+        <div class="kpi-label">應收帳款</div>
+        <div class="kpi-value" id="k-receivable">—</div>
+      </div>
+      <div class="kpi-card purple">
+        <div class="kpi-label">待處理採購單</div>
+        <div class="kpi-value" id="k-orders">—</div>
+        <div class="kpi-sub">筆</div>
+      </div>
     </div>
-    <div class="card">
-      <div class="label">本月支出</div>
-      <div class="value red" id="kpi-expense">—</div>
+
+    <div class="section">
+      <div class="section-title">📈 近 6 個月收支</div>
+      <div class="chart-wrap"><canvas id="chart-finance"></canvas></div>
     </div>
-    <div class="card">
-      <div class="label">本月淨額</div>
-      <div class="value blue" id="kpi-net">—</div>
+
+    <div class="section">
+      <div class="section-title">🧾 最近收據 / 發票</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>日期</th><th>類型</th><th>廠商</th><th>品項</th><th>金額</th><th>AI信心</th><th>圖片</th></tr>
+          </thead>
+          <tbody id="tb-receipts"></tbody>
+        </table>
+      </div>
     </div>
-    <div class="card">
-      <div class="label">應付帳款</div>
-      <div class="value amber" id="kpi-payable">—</div>
-    </div>
-    <div class="card">
-      <div class="label">收據筆數</div>
-      <div class="value" id="kpi-receipts">—</div>
-    </div>
-    <div class="card">
-      <div class="label">待處理訂單</div>
-      <div class="value" id="kpi-orders">—</div>
+
+    <div class="section pb">
+      <div class="section-title">📋 採購訂單追蹤</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>日期</th><th>供應商</th><th>品項</th><th>金額</th><th>狀態</th><th>物流單號</th></tr>
+          </thead>
+          <tbody id="tb-orders"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
-  <!-- Chart -->
-  <div class="section">
-    <h2>近 6 個月收支</h2>
-    <div class="chart-wrap" style="height:260px;">
-      <canvas id="chart"></canvas>
+  <!-- ───────────── TAB: 庫存 ───────────── -->
+  <div class="tab-panel" id="panel-inventory">
+    <div class="kpi-grid">
+      <div class="kpi-card red">
+        <div class="kpi-label">低庫存警示</div>
+        <div class="kpi-value" id="k-low-stock">—</div>
+        <div class="kpi-sub">項</div>
+      </div>
+      <div class="kpi-card green">
+        <div class="kpi-label">庫存正常</div>
+        <div class="kpi-value" id="k-ok-stock">—</div>
+        <div class="kpi-sub">項</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">品項總數</div>
+        <div class="kpi-value" id="k-total-sku">—</div>
+        <div class="kpi-sub">SKU</div>
+      </div>
+    </div>
+
+    <div id="low-stock-strip" class="alert-strip hidden">
+      <div class="icon">⚠️</div>
+      <div id="low-stock-names"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">📦 庫存台帳</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>品項</th><th>分類</th><th>現有庫存</th><th>安全庫存</th><th>單位</th><th>狀態</th><th>建議供應商</th></tr>
+          </thead>
+          <tbody id="tb-inventory"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section pb">
+      <div class="section-title">📊 庫存水位圖</div>
+      <div class="chart-wrap" style="height:280px"><canvas id="chart-inventory"></canvas></div>
     </div>
   </div>
 
-  <!-- Receipts table -->
-  <div class="section">
-    <h2>最近收據／發票</h2>
-    <div style="overflow-x:auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>日期</th>
-            <th>類型</th>
-            <th>廠商</th>
-            <th>品項</th>
-            <th>金額</th>
-            <th>AI 信心</th>
-            <th>圖片</th>
-          </tr>
-        </thead>
-        <tbody id="receipt-body"></tbody>
-      </table>
+  <!-- ───────────── TAB: 電商 ───────────── -->
+  <div class="tab-panel" id="panel-ecommerce">
+    <div class="kpi-grid">
+      <div class="kpi-card red">
+        <div class="kpi-label">未付款</div>
+        <div class="kpi-value" id="k-ec-unpaid">—</div>
+        <div class="kpi-sub">筆</div>
+      </div>
+      <div class="kpi-card amber">
+        <div class="kpi-label">待出貨</div>
+        <div class="kpi-value" id="k-ec-unshipped">—</div>
+        <div class="kpi-sub">筆</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">待催款金額</div>
+        <div class="kpi-value" id="k-ec-unpaid-amt">—</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">⚠️ 未付款訂單</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>建立時間</th><th>訂單編號</th><th>平台</th><th>客戶</th><th>品項</th><th>金額</th><th>付款</th><th>出貨</th></tr>
+          </thead>
+          <tbody id="tb-ec-unpaid"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section pb">
+      <div class="section-title">🚚 待出貨訂單</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>建立時間</th><th>訂單編號</th><th>平台</th><th>客戶</th><th>品項</th><th>金額</th><th>付款</th><th>出貨</th></tr>
+          </thead>
+          <tbody id="tb-ec-unshipped"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
-  <!-- Orders table -->
-  <div class="section" style="padding-bottom:32px;">
-    <h2>訂單追蹤</h2>
-    <div style="overflow-x:auto;">
-      <table>
-        <thead>
-          <tr>
-            <th>日期</th>
-            <th>供應商</th>
-            <th>品項</th>
-            <th>金額</th>
-            <th>狀態</th>
-            <th>物流單號</th>
-          </tr>
-        </thead>
-        <tbody id="order-body"></tbody>
-      </table>
+  <!-- ───────────── TAB: 排班 ───────────── -->
+  <div class="tab-panel" id="panel-schedule">
+    <div class="kpi-grid">
+      <div class="kpi-card blue">
+        <div class="kpi-label">今日出勤人數</div>
+        <div class="kpi-value" id="k-today-count">—</div>
+        <div class="kpi-sub">人</div>
+      </div>
+      <div class="kpi-card green">
+        <div class="kpi-label">本週班次</div>
+        <div class="kpi-value" id="k-week-shifts">—</div>
+        <div class="kpi-sub">班</div>
+      </div>
+      <div class="kpi-card amber">
+        <div class="kpi-label">本週總工時</div>
+        <div class="kpi-value" id="k-week-hours">—</div>
+        <div class="kpi-sub">h</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">☀️ 今日出勤</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>員工</th><th>店別</th><th>上班</th><th>下班</th><th>工時</th><th>班別</th><th>狀態</th></tr>
+          </thead>
+          <tbody id="tb-today"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section pb">
+      <div class="section-title">📅 本週全部班表</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>日期</th><th>員工</th><th>店別</th><th>上班</th><th>下班</th><th>工時</th><th>班別</th></tr>
+          </thead>
+          <tbody id="tb-week"></tbody>
+        </table>
+      </div>
     </div>
   </div>
-</div>
+
+</div><!-- #content -->
 
 <script>
-const fmt = n => {
-  const v = parseFloat(n) || 0;
-  return v.toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-};
+// ── Utilities ─────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const fmt = n => (parseFloat(n)||0).toLocaleString('zh-TW',{minimumFractionDigits:0,maximumFractionDigits:0});
+const fmtAmt = n => '$' + fmt(n);
 
-const confidenceBadge = c => {
-  if (c === '高') return `<span class="badge badge-high">高</span>`;
-  if (c === '中') return `<span class="badge badge-mid">中</span>`;
-  return `<span class="badge badge-low">${c || '—'}</span>`;
-};
+function badge(text, cls){ return `<span class="badge ${cls}">${text}</span>`; }
 
-const statusBadge = s => {
-  if (!s) return '—';
-  if (s.includes('到貨')) return `<span class="badge badge-done">${s}</span>`;
-  if (s.includes('出貨')) return `<span class="badge badge-ship">${s}</span>`;
-  return `<span class="badge badge-pend">${s}</span>`;
-};
+function payBadge(s){
+  if(!s) return badge('—','b-gray');
+  if(s==='已付款') return badge(s,'b-green');
+  if(s==='未付款') return badge(s,'b-red');
+  return badge(s,'b-amber');
+}
+function shipBadge(s){
+  if(!s) return badge('—','b-gray');
+  if(s==='已出貨') return badge(s,'b-green');
+  if(s==='待出貨') return badge(s,'b-amber');
+  if(s.includes('取消')||s.includes('退款')) return badge(s,'b-red');
+  return badge(s,'b-blue');
+}
+function orderBadge(s){
+  if(!s) return badge('—','b-gray');
+  if(s.includes('到貨')) return badge(s,'b-green');
+  if(s.includes('運送')) return badge(s,'b-blue');
+  if(s.includes('確認')) return badge(s,'b-amber');
+  return badge(s,'b-gray');
+}
+function stockBadge(isLow){
+  return isLow ? badge('⚠ 不足','b-red') : badge('正常','b-green');
+}
+function shiftBadge(s){
+  if(!s||s==='正常') return badge('正常','b-green');
+  if(s==='請假') return badge('請假','b-amber');
+  return badge(s,'b-gray');
+}
+function confBadge(c){
+  const n = parseFloat(c)||0;
+  if(n>=0.9) return badge('高','b-green');
+  if(n>=0.7) return badge('中','b-amber');
+  return badge(n ? (n*100).toFixed(0)+'%' : '—','b-red');
+}
+function ellipsis(s, n=22){ return s && s.length>n ? s.slice(0,n)+'…' : (s||'—'); }
 
-let chartInst = null;
+const charts = {};
 
-async function loadData() {
-  document.getElementById('loading').style.display = 'block';
-  document.getElementById('content').style.display = 'none';
-  try {
+// ── Tab switching ────────────────────────────────────────────────────
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach((t,i)=>{
+    const names=['finance','inventory','ecommerce','schedule'];
+    t.classList.toggle('active', names[i]===name);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  $('panel-'+name).classList.add('active');
+}
+
+// ── Load data ────────────────────────────────────────────────────────
+async function loadData(){
+  $('loading').style.display='block';
+  $('content').style.display='none';
+  try{
     const res = await fetch('/api/dashboard/data?months=6');
+    if(!res.ok) throw new Error('HTTP '+res.status);
     const d = await res.json();
     render(d);
-    document.getElementById('last-update').textContent =
-      '更新：' + new Date().toLocaleTimeString('zh-TW');
-  } catch(e) {
-    document.getElementById('loading').textContent = '載入失敗：' + e.message;
+    $('last-update').textContent = '更新：'+new Date().toLocaleTimeString('zh-TW');
+  }catch(e){
+    $('loading').textContent = '載入失敗：'+e.message;
     return;
   }
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('content').style.display = 'block';
+  $('loading').style.display='none';
+  $('content').style.display='block';
 }
 
-function render(d) {
-  const { monthly, receipts, orders } = d;
+// ── Render ────────────────────────────────────────────────────────────
+function render(d){
+  renderFinance(d);
+  renderInventory(d);
+  renderEcommerce(d);
+  renderSchedule(d);
+}
 
-  // Current month KPIs
-  const cur = monthly[monthly.length - 1] || {};
-  document.getElementById('kpi-income').textContent  = '$' + fmt(cur.income);
-  document.getElementById('kpi-expense').textContent = '$' + fmt(cur.expense);
-  const net = (parseFloat(cur.income)||0) - (parseFloat(cur.expense)||0);
-  const netEl = document.getElementById('kpi-net');
-  netEl.textContent = (net >= 0 ? '+' : '') + '$' + fmt(Math.abs(net));
-  netEl.className = 'value ' + (net >= 0 ? 'green' : 'red');
-  document.getElementById('kpi-payable').textContent  = '$' + fmt(cur.payable);
-  document.getElementById('kpi-receipts').textContent = receipts.length;
-
-  const pendingOrders = orders.filter(o => !o.status.includes('到貨')).length;
-  document.getElementById('kpi-orders').textContent = pendingOrders;
+// ── Finance ──────────────────────────────────────────────────────────
+function renderFinance({monthly, receipts, orders}){
+  const cur = monthly[monthly.length-1]||{};
+  $('k-income').textContent   = fmtAmt(cur.income);
+  $('k-expense').textContent  = fmtAmt(cur.expense);
+  $('k-payable').textContent  = fmtAmt(cur.payable);
+  $('k-receivable').textContent = fmtAmt(cur.receivable);
+  const net = (parseFloat(cur.income)||0)-(parseFloat(cur.expense)||0);
+  const ne = $('k-net');
+  ne.textContent = (net>=0?'+':'')+fmtAmt(Math.abs(net));
+  ne.style.color = net>=0 ? '#16a34a' : '#dc2626';
+  const pending = (orders||[]).filter(o=>!o.status.includes('到貨')).length;
+  $('k-orders').textContent = pending;
 
   // Chart
-  const labels = monthly.map(m => `${m.year}/${String(m.month).padStart(2,'0')}`);
-  const incomes  = monthly.map(m => parseFloat(m.income)  || 0);
-  const expenses = monthly.map(m => parseFloat(m.expense) || 0);
-
-  if (chartInst) chartInst.destroy();
-  chartInst = new Chart(document.getElementById('chart'), {
-    type: 'bar',
-    data: {
+  const labels = monthly.map(m=>`${m.year}/${String(m.month).padStart(2,'0')}`);
+  if(charts.finance) charts.finance.destroy();
+  charts.finance = new Chart($('chart-finance'),{
+    type:'bar',
+    data:{
       labels,
-      datasets: [
-        { label: '收入', data: incomes,  backgroundColor: 'rgba(34,197,94,.7)',  borderRadius: 4 },
-        { label: '支出', data: expenses, backgroundColor: 'rgba(239,68,68,.7)',  borderRadius: 4 },
+      datasets:[
+        {label:'收入',data:monthly.map(m=>parseFloat(m.income)||0),backgroundColor:'rgba(34,197,94,.75)',borderRadius:5},
+        {label:'支出',data:monthly.map(m=>parseFloat(m.expense)||0),backgroundColor:'rgba(239,68,68,.75)',borderRadius:5},
       ]
     },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: 'top' } },
-      scales: {
-        y: { ticks: { callback: v => '$' + v.toLocaleString() } }
-      }
-    }
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'top'}},
+      scales:{y:{ticks:{callback:v=>'$'+v.toLocaleString()}}}}
   });
 
-  // Receipts table
-  const rb = document.getElementById('receipt-body');
-  if (!receipts.length) {
-    rb.innerHTML = '<tr><td colspan="7" class="empty">尚無資料</td></tr>';
+  // Receipts
+  const rb = $('tb-receipts');
+  rb.innerHTML = receipts.length
+    ? receipts.map(r=>`<tr>
+        <td>${r.date||'—'}</td>
+        <td>${r.doc_type||'—'}</td>
+        <td>${r.vendor||'—'}</td>
+        <td title="${r.items}">${ellipsis(r.items,24)}</td>
+        <td>${r.amount ? fmtAmt(r.amount) : '—'}</td>
+        <td>${confBadge(r.confidence)}</td>
+        <td>${r.drive_url
+          ? `<a href="${r.drive_url}" target="_blank" onclick="openLb(event,'${r.drive_url}')"><img class="thumb" src="${r.drive_url}" onerror="this.style.display='none'" alt=""></a>`
+          : '—'}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="7" class="empty">尚無收據資料</td></tr>';
+
+  // Orders
+  const ob = $('tb-orders');
+  ob.innerHTML = orders.length
+    ? orders.map(o=>`<tr>
+        <td>${o.date||'—'}</td>
+        <td>${o.supplier||'—'}</td>
+        <td title="${o.items}">${ellipsis(o.items,22)}</td>
+        <td>${o.amount ? fmtAmt(o.amount) : '—'}</td>
+        <td>${orderBadge(o.status)}</td>
+        <td>${o.tracking||'—'}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="6" class="empty">尚無訂單資料</td></tr>';
+}
+
+// ── Inventory ────────────────────────────────────────────────────────
+function renderInventory({inventory}){
+  const inv = inventory||[];
+  const low = inv.filter(i=>i.is_low);
+  $('k-low-stock').textContent  = low.length;
+  $('k-ok-stock').textContent   = inv.length - low.length;
+  $('k-total-sku').textContent  = inv.length;
+
+  const strip = $('low-stock-strip');
+  if(low.length){
+    strip.classList.remove('hidden');
+    $('low-stock-names').textContent =
+      '低庫存警示：' + low.map(i=>`${i.name}（剩 ${i.current}${i.unit}）`).join('、');
   } else {
-    rb.innerHTML = receipts.map(r => `
-      <tr>
-        <td>${r.date || '—'}</td>
-        <td>${r.doc_type || '—'}</td>
-        <td>${r.vendor || '—'}</td>
-        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${r.items}">${r.items || '—'}</td>
-        <td>${r.amount ? '$' + fmt(r.amount) : '—'}</td>
-        <td>${confidenceBadge(r.confidence)}</td>
-        <td>${r.drive_url ? `<a href="${r.drive_url}" target="_blank" onclick="openLb(event,'${r.drive_url}')"><img class="thumb" src="${r.drive_url}" onerror="this.style.display='none';this.nextSibling.style.display='inline'" alt="收據"></a><a href="${r.drive_url}" target="_blank" style="display:none">查看</a>` : '—'}</td>
-      </tr>`).join('');
+    strip.classList.add('hidden');
   }
 
-  // Orders table
-  const ob = document.getElementById('order-body');
-  if (!orders.length) {
-    ob.innerHTML = '<tr><td colspan="6" class="empty">尚無資料</td></tr>';
-  } else {
-    ob.innerHTML = orders.map(o => `
-      <tr>
-        <td>${o.date || '—'}</td>
-        <td>${o.supplier || '—'}</td>
-        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${o.items}">${o.items || '—'}</td>
-        <td>${o.amount ? '$' + fmt(o.amount) : '—'}</td>
-        <td>${statusBadge(o.status)}</td>
-        <td>${o.tracking || '—'}</td>
-      </tr>`).join('');
+  // Table
+  const tb = $('tb-inventory');
+  tb.innerHTML = inv.length
+    ? inv.sort((a,b)=>a.is_low===b.is_low ? 0 : a.is_low ? -1 : 1)
+        .map(i=>`<tr>
+          <td><strong>${i.name}</strong></td>
+          <td>${i.category||'—'}</td>
+          <td style="font-weight:600;color:${i.is_low?'#dc2626':'#15803d'}">${i.current} ${i.unit}</td>
+          <td>${i.safety} ${i.unit}</td>
+          <td>${i.unit}</td>
+          <td>${stockBadge(i.is_low)}</td>
+          <td>${i.supplier||'—'}</td>
+        </tr>`).join('')
+    : '<tr><td colspan="7" class="empty">尚無庫存資料</td></tr>';
+
+  // Bar chart: current vs safety stock
+  if(inv.length){
+    if(charts.inventory) charts.inventory.destroy();
+    const top = inv.slice(0,15);
+    charts.inventory = new Chart($('chart-inventory'),{
+      type:'bar',
+      data:{
+        labels: top.map(i=>i.name),
+        datasets:[
+          {label:'現有庫存',data:top.map(i=>i.current),backgroundColor:top.map(i=>i.is_low?'rgba(239,68,68,.75)':'rgba(34,197,94,.75)'),borderRadius:4},
+          {label:'安全庫存',data:top.map(i=>i.safety),backgroundColor:'rgba(148,163,184,.4)',borderRadius:4,type:'bar'},
+        ]
+      },
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{position:'top'}},
+        scales:{x:{ticks:{maxRotation:35}}}}
+    });
   }
 }
 
-function openLb(e, url) {
-  // Only intercept /storage/ URLs (local); let Drive links open normally
-  if (!url.includes('/storage/')) return;
+// ── Ecommerce ────────────────────────────────────────────────────────
+function renderEcommerce({ecommerce_unpaid, ecommerce_unshipped}){
+  const unpaid   = ecommerce_unpaid||[];
+  const unshipped = ecommerce_unshipped||[];
+  $('k-ec-unpaid').textContent    = unpaid.length;
+  $('k-ec-unshipped').textContent = unshipped.length;
+  const totalUnpaid = unpaid.reduce((s,o)=>s+(parseFloat(o.total)||0),0);
+  $('k-ec-unpaid-amt').textContent = fmtAmt(totalUnpaid);
+
+  function ecRows(list, tbId){
+    const tb = $(tbId);
+    tb.innerHTML = list.length
+      ? list.map(o=>`<tr>
+          <td>${(o.created_at||'').slice(0,10)||'—'}</td>
+          <td style="font-family:monospace;font-size:0.78rem">${o.order_number||'—'}</td>
+          <td>${o.platform||'—'}</td>
+          <td>${o.customer||'—'}</td>
+          <td title="${o.items}">${ellipsis(o.items,20)}</td>
+          <td>${fmtAmt(o.total)}</td>
+          <td>${payBadge(o.payment_status)}</td>
+          <td>${shipBadge(o.ship_status)}</td>
+        </tr>`).join('')
+      : `<tr><td colspan="8" class="empty">✅ 無待處理項目</td></tr>`;
+  }
+  ecRows(unpaid,   'tb-ec-unpaid');
+  ecRows(unshipped,'tb-ec-unshipped');
+}
+
+// ── Schedule ─────────────────────────────────────────────────────────
+function renderSchedule({today_shifts, week_shifts}){
+  const ts = today_shifts||[];
+  const ws = week_shifts||[];
+  $('k-today-count').textContent = ts.length;
+  $('k-week-shifts').textContent = ws.length;
+  const totalH = ws.reduce((s,x)=>s+(parseFloat(x.hours)||0),0);
+  $('k-week-hours').textContent  = totalH.toFixed(1);
+
+  const tt = $('tb-today');
+  tt.innerHTML = ts.length
+    ? ts.map(s=>`<tr>
+        <td><strong>${s.name}</strong></td>
+        <td>${s.store||'—'}</td>
+        <td>${s.start}</td>
+        <td>${s.end}</td>
+        <td>${s.hours}h</td>
+        <td>${badge(s.type,'b-blue')}</td>
+        <td>${shiftBadge(s.status)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="7" class="empty">今日無班表資料</td></tr>';
+
+  const wt = $('tb-week');
+  wt.innerHTML = ws.length
+    ? ws.map(s=>`<tr>
+        <td>${s.date}</td>
+        <td>${s.name}</td>
+        <td>${s.store||'—'}</td>
+        <td>${s.start}</td>
+        <td>${s.end}</td>
+        <td>${s.hours}h</td>
+        <td>${badge(s.type,'b-blue')}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="7" class="empty">本週無班表資料</td></tr>';
+}
+
+// ── Lightbox ─────────────────────────────────────────────────────────
+function openLb(e,url){
+  if(!url.includes('/storage/')) return;
   e.preventDefault();
-  document.getElementById('lb-img').src = url;
-  document.getElementById('lb').classList.add('open');
+  $('lb-img').src=url;
+  $('lb').classList.add('open');
 }
-function closeLb() {
-  document.getElementById('lb').classList.remove('open');
-  document.getElementById('lb-img').src = '';
+function closeLb(){
+  $('lb').classList.remove('open');
+  $('lb-img').src='';
 }
-document.getElementById('lb').addEventListener('click', e => {
-  if (e.target === document.getElementById('lb')) closeLb();
-});
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLb(); });
+$('lb').addEventListener('click', e=>{ if(e.target===$('lb')) closeLb(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeLb(); });
 
 loadData();
 </script>
