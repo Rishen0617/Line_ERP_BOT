@@ -130,10 +130,10 @@ async def dashboard_data(months: int = 6) -> dict[str, Any]:
     # Serialize inventory items
     inv_data = [
         {
-            "name": it.item_name, "unit": it.unit,
+            "name": it.name, "unit": it.unit,
             "current": it.current_stock, "safety": it.safety_stock,
             "is_low": it.is_low, "category": it.category,
-            "supplier": it.preferred_supplier,
+            "supplier": it.supplier,
         }
         for it in inventory
     ]
