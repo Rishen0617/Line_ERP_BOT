@@ -79,16 +79,34 @@ async def dashboard():
     return FileResponse(str(STATIC_DIR / "dashboard.html"))
 
 
+_dashboard_cache: dict[str, Any] = {}
+_dashboard_cache_time: float = 0.0
+_CACHE_TTL = 60.0  # seconds
+
+
 @app.get("/api/dashboard/data")
-async def dashboard_data(months: int = 6) -> dict[str, Any]:
-    """Aggregate data for dashboard: financial + inventory + ecommerce + schedule."""
+async def dashboard_data(months: int = 6, bust: bool = False) -> dict[str, Any]:
+    """Aggregate data for dashboard: financial + inventory + ecommerce + schedule.
+
+    Results are cached for 60 s to keep the dashboard snappy.
+    Pass ?bust=true to force a fresh fetch.
+    """
     import asyncio
+    import time
     from datetime import date
     from app.services.sheets_service import (
         get_monthly_summary, get_recent_receipts, get_recent_orders,
         get_all_inventory_items, get_ecommerce_orders_by_status,
         get_shifts_by_date, get_shifts_by_date_range,
     )
+
+    global _dashboard_cache, _dashboard_cache_time
+    cache_key = str(months)
+    now = time.monotonic()
+    if not bust and _dashboard_cache.get(cache_key) and now - _dashboard_cache_time < _CACHE_TTL:
+        cached = dict(_dashboard_cache[cache_key])
+        cached["cached"] = True
+        return cached
     from app.services.schedule_service import week_range
 
     today = date.today()
@@ -158,8 +176,9 @@ async def dashboard_data(months: int = 6) -> dict[str, Any]:
             "hours": s.hours, "type": s.shift_type, "status": s.status,
         }
 
-    return {
+    result = {
         "ok": True,
+        "cached": False,
         "monthly": monthly,
         "receipts": receipts,
         "orders": proc_orders,
@@ -169,6 +188,9 @@ async def dashboard_data(months: int = 6) -> dict[str, Any]:
         "today_shifts": [shift_to_dict(s) for s in today_shifts],
         "week_shifts": [shift_to_dict(s) for s in week_shifts],
     }
+    _dashboard_cache[cache_key] = result
+    _dashboard_cache_time = time.monotonic()
+    return result
 
 
 # ─── Morning report endpoints ─────────────────────────────────────────
