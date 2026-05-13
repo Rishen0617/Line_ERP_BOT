@@ -47,6 +47,10 @@ async def process_text(
     elif intent == "admin":
         await _handle_admin(text, user_id, group_id)
 
+    elif intent == "ecommerce":
+        from app.handlers.ecommerce_handler import handle_ecommerce_command
+        await handle_ecommerce_command(text, user_id, group_id)
+
     elif intent == "schedule":
         from app.handlers.schedule_handler import handle_schedule_command
         await handle_schedule_command(text, user_id, group_id)

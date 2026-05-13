@@ -9,6 +9,9 @@ Sheet layout (single Spreadsheet, multiple tabs):
   Sheet4 = 月報（公式，不由程式寫入）
   Sheet5 = 班表        (A=日期 B=員工ID C=員工名 D=店別 E=開始 F=結束 G=工時 H=班別 I=狀態 J=備註)
   Sheet6 = 請假記錄    (A=申請時間 B=員工ID C=員工名 D=假日 E=假別 F=原因 G=狀態 H=審核者 I=備註)
+  Sheet7 = 電商訂單    (A=建立時間 B=訂單編號 C=平台 D=客戶 E=電話 F=地址 G=品項
+                        H=商品金額 I=運費 J=總金額 K=付款方式 L=付款狀態
+                        M=物流公司 N=物流單號 O=出貨狀態 P=備註 Q=建立者)
 """
 from __future__ import annotations
 
@@ -23,6 +26,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 from app.config import settings
+from app.models.ecommerce import EcommerceOrder
 from app.models.order import Order
 from app.models.receipt import Receipt
 from app.models.shift import LeaveRequest, Shift
@@ -39,6 +43,15 @@ SHEET_LEDGER = "記帳流水帳"
 SHEET_ORDERS = "訂單追蹤"
 SHEET_SCHEDULE = "班表"
 SHEET_LEAVE = "請假記錄"
+SHEET_ECOMMERCE = "電商訂單"
+
+# Column indices for 電商訂單 (0-based)
+_EC_COL_ORDER_NO = 1
+_EC_COL_PAY_STATUS = 11
+_EC_COL_LOGISTICS = 12
+_EC_COL_TRACKING = 13
+_EC_COL_SHIP_STATUS = 14
+_EC_COL_NOTES = 15
 
 
 @lru_cache(maxsize=1)
@@ -390,3 +403,188 @@ async def _append_row(sheet_name: str, row: list) -> int:
         return int(updated.split("A")[-1].split(":")[0])
     except (ValueError, IndexError):
         return 0
+
+
+# ─── E-commerce Orders (Sheet7) ───────────────────────────────────────
+
+async def append_ecommerce_order(order: EcommerceOrder) -> int:
+    """Append one e-commerce order row to Sheet7 (電商訂單)."""
+    row = [
+        order.created_at,           # A 建立時間
+        order.order_number,         # B 訂單編號
+        order.platform,             # C 平台
+        order.customer_name,        # D 客戶
+        order.customer_phone,       # E 電話
+        order.shipping_address,     # F 地址
+        order.items_summary,        # G 品項
+        order.subtotal,             # H 商品金額
+        order.shipping_fee,         # I 運費
+        order.total_amount,         # J 總金額
+        order.payment_method,       # K 付款方式
+        order.payment_status,       # L 付款狀態
+        order.logistics_company,    # M 物流公司
+        order.tracking_number,      # N 物流單號
+        order.ship_status,          # O 出貨狀態
+        order.notes,                # P 備註
+        order.created_by,           # Q 建立者
+    ]
+    return await _append_row(SHEET_ECOMMERCE, row)
+
+
+async def find_ecommerce_order(order_number: str) -> Optional[EcommerceOrder]:
+    """Find an order by order_number in Sheet7."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_ECOMMERCE}!A:Q",
+            ).execute()
+        )
+        rows = result.get("values", [])[1:]
+        for r in rows:
+            if len(r) > 1 and r[1] == order_number:
+                return _row_to_ecommerce_order(r)
+        return None
+    except Exception as e:
+        log.error("find_ecommerce_order error: %s", e)
+        raise
+
+
+async def update_ecommerce_order_fields(
+    order_number: str, fields: dict
+) -> bool:
+    """Find the order row and patch specific columns. Returns True if found."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_ECOMMERCE}!A:Q",
+            ).execute()
+        )
+        rows = result.get("values", [])
+        for i, r in enumerate(rows):
+            if len(r) > 1 and r[1] == order_number:
+                row_num = i + 1  # 1-based
+                updates = []
+
+                col_map = {
+                    "payment_status": _EC_COL_PAY_STATUS,
+                    "logistics_company": _EC_COL_LOGISTICS,
+                    "tracking_number": _EC_COL_TRACKING,
+                    "ship_status": _EC_COL_SHIP_STATUS,
+                }
+                for field, col_idx in col_map.items():
+                    if field in fields:
+                        col_letter = chr(ord("A") + col_idx)
+                        updates.append({
+                            "range": f"{SHEET_ECOMMERCE}!{col_letter}{row_num}",
+                            "values": [[fields[field]]],
+                        })
+
+                # Append to notes column
+                if "notes_append" in fields:
+                    current_notes = r[_EC_COL_NOTES] if len(r) > _EC_COL_NOTES else ""
+                    new_notes = (current_notes + " " + fields["notes_append"]).strip()
+                    col_letter = chr(ord("A") + _EC_COL_NOTES)
+                    updates.append({
+                        "range": f"{SHEET_ECOMMERCE}!{col_letter}{row_num}",
+                        "values": [[new_notes]],
+                    })
+
+                if updates:
+                    await asyncio.to_thread(
+                        lambda: _sheets().values().batchUpdate(
+                            spreadsheetId=settings.google_spreadsheet_id,
+                            body={"valueInputOption": "USER_ENTERED", "data": updates},
+                        ).execute()
+                    )
+                return True
+        return False
+    except Exception as e:
+        log.error("update_ecommerce_order_fields error: %s", e)
+        raise
+
+
+async def get_ecommerce_orders_by_status(
+    payment_status: str | None = None,
+    ship_status: str | None = None,
+) -> list[EcommerceOrder]:
+    """Return orders matching the given status filter(s)."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_ECOMMERCE}!A:Q",
+            ).execute()
+        )
+        rows = result.get("values", [])[1:]
+        orders = []
+        for r in rows:
+            try:
+                o = _row_to_ecommerce_order(r)
+            except Exception:
+                continue
+            if payment_status and o.payment_status != payment_status:
+                continue
+            if ship_status and o.ship_status != ship_status:
+                continue
+            orders.append(o)
+        return orders
+    except Exception as e:
+        log.error("get_ecommerce_orders_by_status error: %s", e)
+        raise
+
+
+async def get_ecommerce_orders_by_date(target_date: str) -> list[EcommerceOrder]:
+    """Return orders created on *target_date* (YYYY-MM-DD)."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_ECOMMERCE}!A:Q",
+            ).execute()
+        )
+        rows = result.get("values", [])[1:]
+        orders = []
+        for r in rows:
+            if not r or not str(r[0]).startswith(target_date):
+                continue
+            try:
+                orders.append(_row_to_ecommerce_order(r))
+            except Exception:
+                continue
+        return orders
+    except Exception as e:
+        log.error("get_ecommerce_orders_by_date error: %s", e)
+        raise
+
+
+def _row_to_ecommerce_order(r: list) -> EcommerceOrder:
+    def _get(idx: int) -> str:
+        return r[idx] if len(r) > idx else ""
+
+    def _float(idx: int) -> float:
+        try:
+            return float(_get(idx))
+        except (ValueError, TypeError):
+            return 0.0
+
+    return EcommerceOrder(
+        created_at=_get(0),
+        order_number=_get(1),
+        platform=_get(2) or "其他",           # type: ignore[arg-type]
+        customer_name=_get(3),
+        customer_phone=_get(4),
+        shipping_address=_get(5),
+        items_summary=_get(6),
+        subtotal=_float(7),
+        shipping_fee=_float(8),
+        total_amount=_float(9),
+        payment_method=_get(10) or "其他",    # type: ignore[arg-type]
+        payment_status=_get(11) or "未付款",   # type: ignore[arg-type]
+        logistics_company=_get(12),
+        tracking_number=_get(13),
+        ship_status=_get(14) or "待出貨",       # type: ignore[arg-type]
+        notes=_get(15),
+        created_by=_get(16),
+    )
