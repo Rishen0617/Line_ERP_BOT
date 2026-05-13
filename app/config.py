@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     # Example: "Uabc123,Udef456"
     manager_line_user_ids: str = Field("", alias="MANAGER_LINE_USER_IDS")
 
+    # Morning report
+    # Secret token to protect POST /api/morning-report/send
+    # Set MORNING_REPORT_SECRET in Railway env vars, then use it as Bearer token in cron job
+    morning_report_secret: str = Field("", alias="MORNING_REPORT_SECRET")
+
     def is_manager(self, user_id: str) -> bool:
         if not self.manager_line_user_ids.strip():
             return False

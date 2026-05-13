@@ -52,6 +52,9 @@ async def process_text(
         from app.handlers.command_handler import handle_command
         await handle_command(text, reply_token, user_id, group_id)
 
+    elif intent == "admin":
+        await _handle_admin(text, user_id, group_id)
+
     elif intent == "schedule":
         from app.handlers.schedule_handler import handle_schedule_command
         await handle_schedule_command(text, user_id, group_id)
@@ -236,3 +239,27 @@ def _quick_parse(text: str) -> tuple[float | None, str, str, str | None]:
 def _extract_supplier(text: str) -> str:
     parties = _PARTY_RE.findall(text)
     return parties[0] if parties else "未知廠商"
+
+
+async def _handle_admin(text: str, user_id: str, group_id: str) -> None:
+    """Handle admin commands (/晨報)."""
+    stripped = text.strip()
+
+    if stripped.startswith("/晨報"):
+        # Only allow admin user to trigger manually
+        if settings.admin_line_user_id and user_id != settings.admin_line_user_id:
+            await push_text(group_id, "⚠️ 僅限管理員使用此指令")
+            return
+        from app.services.morning_report_service import build_report
+        from app.utils.date_parser import parse_date
+        import re
+        date_match = re.search(r"\d{4}-\d{2}-\d{2}", stripped)
+        ref = None
+        if date_match:
+            ref = parse_date(date_match.group())
+        try:
+            report = await build_report(ref)
+            await push_text(group_id, report)
+        except Exception as e:
+            log.error("_handle_admin /晨報 failed: %s", e)
+            await push_text(group_id, f"⚠️ 晨報產生失敗：{e}")

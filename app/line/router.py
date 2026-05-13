@@ -19,6 +19,7 @@ _SCHEDULE_COMMANDS = {
     "/缺工", "/新增班", "/核假",
 }
 _LEAVE_KEYWORDS = {"請假"}
+_ADMIN_COMMANDS = {"/晨報"}
 
 
 def route_text(text: str) -> str:
@@ -38,6 +39,9 @@ def route_text(text: str) -> str:
 
     if any(stripped.startswith(cmd) for cmd in _MYID_COMMANDS):
         return "myid"
+
+    if any(stripped.startswith(cmd) for cmd in _ADMIN_COMMANDS):
+        return "admin"
 
     if any(stripped.startswith(cmd) for cmd in _SCHEDULE_COMMANDS):
         return "schedule"
