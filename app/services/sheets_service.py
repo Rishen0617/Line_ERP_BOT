@@ -12,6 +12,8 @@ Sheet layout (single Spreadsheet, multiple tabs):
   Sheet7 = 電商訂單    (A=建立時間 B=訂單編號 C=平台 D=客戶 E=電話 F=地址 G=品項
                         H=商品金額 I=運費 J=總金額 K=付款方式 L=付款狀態
                         M=物流公司 N=物流單號 O=出貨狀態 P=備註 Q=建立者)
+  Sheet8 = 庫存台帳    (A=品項 B=規格 C=單位 D=安全庫存 E=目前庫存 F=最後更新 G=分類 H=供應商)
+  Sheet9 = 庫存異動    (A=時間 B=品項 C=異動類型 D=數量 E=單位 F=店別 G=關聯單號 H=操作者 I=備註)
 """
 from __future__ import annotations
 
@@ -27,6 +29,7 @@ from googleapiclient.discovery import build
 
 from app.config import settings
 from app.models.ecommerce import EcommerceOrder
+from app.models.inventory import InventoryItem, StockMovement
 from app.models.order import Order
 from app.models.receipt import Receipt
 from app.models.shift import LeaveRequest, Shift
@@ -44,6 +47,14 @@ SHEET_ORDERS = "訂單追蹤"
 SHEET_SCHEDULE = "班表"
 SHEET_LEAVE = "請假記錄"
 SHEET_ECOMMERCE = "電商訂單"
+SHEET_INVENTORY = "庫存台帳"
+SHEET_MOVEMENTS = "庫存異動"
+
+# Inventory column indices (0-based, Sheet8)
+_INV_COL_NAME = 0
+_INV_COL_STOCK = 4
+_INV_COL_SAFETY = 3
+_INV_COL_UPDATED = 5
 
 # Column indices for 電商訂單 (0-based)
 _EC_COL_ORDER_NO = 1
@@ -587,4 +598,203 @@ def _row_to_ecommerce_order(r: list) -> EcommerceOrder:
         ship_status=_get(14) or "待出貨",       # type: ignore[arg-type]
         notes=_get(15),
         created_by=_get(16),
+    )
+
+
+# ─── Inventory Ledger (Sheet8) ────────────────────────────────────────
+
+async def get_all_inventory_items() -> list[InventoryItem]:
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_INVENTORY}!A:H",
+            ).execute()
+        )
+        rows = result.get("values", [])[1:]
+        items = []
+        for r in rows:
+            if not r or not r[0]:
+                continue
+            try:
+                items.append(_row_to_inventory(r))
+            except Exception:
+                continue
+        return items
+    except Exception as e:
+        log.error("get_all_inventory_items error: %s", e)
+        raise
+
+
+async def get_inventory_item(name: str) -> Optional[InventoryItem]:
+    items = await get_all_inventory_items()
+    for it in items:
+        if it.name == name:
+            return it
+    return None
+
+
+async def update_inventory_stock(
+    name: str, delta: float = 0.0, absolute: float | None = None
+) -> InventoryItem:
+    """Find item row and update current stock (E) and last-updated (F)."""
+    from zoneinfo import ZoneInfo
+    from datetime import datetime
+    tz = ZoneInfo(settings.bot_timezone)
+    now_str = datetime.now(tz).strftime("%Y-%m-%d %H:%M")
+
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_INVENTORY}!A:H",
+            ).execute()
+        )
+        rows = result.get("values", [])
+        for i, r in enumerate(rows):
+            if r and r[0] == name:
+                row_num = i + 1
+                cur = float(r[_INV_COL_STOCK]) if len(r) > _INV_COL_STOCK and r[_INV_COL_STOCK] else 0.0
+                new_stock = absolute if absolute is not None else cur + delta
+                await asyncio.to_thread(
+                    lambda: _sheets().values().batchUpdate(
+                        spreadsheetId=settings.google_spreadsheet_id,
+                        body={
+                            "valueInputOption": "USER_ENTERED",
+                            "data": [
+                                {"range": f"{SHEET_INVENTORY}!E{row_num}", "values": [[new_stock]]},
+                                {"range": f"{SHEET_INVENTORY}!F{row_num}", "values": [[now_str]]},
+                            ],
+                        },
+                    ).execute()
+                )
+                item = _row_to_inventory(r)
+                item.current_stock = new_stock
+                item.last_updated = now_str
+                return item
+
+        # Item not found → create a new row
+        new_stock = absolute if absolute is not None else max(0.0, delta)
+        new_row = [name, "", "", 0, new_stock, now_str, "", ""]
+        await _append_row(SHEET_INVENTORY, new_row)
+        return InventoryItem(name=name, current_stock=new_stock, last_updated=now_str)
+
+    except Exception as e:
+        log.error("update_inventory_stock error: %s", e)
+        raise
+
+
+async def update_inventory_safety_stock(name: str, level: float) -> InventoryItem:
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_INVENTORY}!A:H",
+            ).execute()
+        )
+        rows = result.get("values", [])
+        for i, r in enumerate(rows):
+            if r and r[0] == name:
+                row_num = i + 1
+                await asyncio.to_thread(
+                    lambda: _sheets().values().update(
+                        spreadsheetId=settings.google_spreadsheet_id,
+                        range=f"{SHEET_INVENTORY}!D{row_num}",
+                        valueInputOption="USER_ENTERED",
+                        body={"values": [[level]]},
+                    ).execute()
+                )
+                item = _row_to_inventory(r)
+                item.safety_stock = level
+                return item
+
+        # New item
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        now_str = datetime.now(ZoneInfo(settings.bot_timezone)).strftime("%Y-%m-%d %H:%M")
+        new_row = [name, "", "", level, 0, now_str, "", ""]
+        await _append_row(SHEET_INVENTORY, new_row)
+        return InventoryItem(name=name, safety_stock=level)
+    except Exception as e:
+        log.error("update_inventory_safety_stock error: %s", e)
+        raise
+
+
+def _row_to_inventory(r: list) -> InventoryItem:
+    def _g(i: int) -> str:
+        return r[i] if len(r) > i else ""
+
+    def _f(i: int) -> float:
+        try:
+            return float(_g(i))
+        except (ValueError, TypeError):
+            return 0.0
+
+    return InventoryItem(
+        name=_g(0),
+        spec=_g(1),
+        unit=_g(2) or "個",
+        safety_stock=_f(3),
+        current_stock=_f(4),
+        last_updated=_g(5),
+        category=_g(6),
+        supplier=_g(7),
+    )
+
+
+# ─── Stock Movements (Sheet9) ─────────────────────────────────────────
+
+async def append_stock_movement(m: StockMovement) -> int:
+    row = [
+        m.moved_at,         # A 時間
+        m.item_name,        # B 品項
+        m.movement_type,    # C 異動類型
+        m.quantity,         # D 數量
+        m.unit,             # E 單位
+        m.store,            # F 店別
+        m.ref_order_no,     # G 關聯單號
+        m.operator,         # H 操作者
+        m.notes,            # I 備註
+    ]
+    return await _append_row(SHEET_MOVEMENTS, row)
+
+
+async def get_stock_movements_since(since_date: str) -> list[StockMovement]:
+    """Return all movements where moved_at >= since_date (YYYY-MM-DD prefix match)."""
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_MOVEMENTS}!A:I",
+            ).execute()
+        )
+        rows = result.get("values", [])[1:]
+        movements = []
+        for r in rows:
+            if not r or str(r[0]) < since_date:
+                continue
+            try:
+                movements.append(_row_to_movement(r))
+            except Exception:
+                continue
+        return movements
+    except Exception as e:
+        log.error("get_stock_movements_since error: %s", e)
+        raise
+
+
+def _row_to_movement(r: list) -> StockMovement:
+    def _g(i: int) -> str:
+        return r[i] if len(r) > i else ""
+
+    return StockMovement(
+        moved_at=_g(0),
+        item_name=_g(1),
+        movement_type=_g(2) or "叫貨",  # type: ignore[arg-type]
+        quantity=float(_g(3) or 0),
+        unit=_g(4),
+        store=_g(5),
+        ref_order_no=_g(6),
+        operator=_g(7),
+        notes=_g(8),
     )

@@ -51,6 +51,10 @@ async def process_text(
         from app.handlers.ecommerce_handler import handle_ecommerce_command
         await handle_ecommerce_command(text, user_id, group_id)
 
+    elif intent == "inventory":
+        from app.handlers.inventory_handler import handle_inventory_command
+        await handle_inventory_command(text, user_id, group_id)
+
     elif intent == "schedule":
         from app.handlers.schedule_handler import handle_schedule_command
         await handle_schedule_command(text, user_id, group_id)
