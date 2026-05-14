@@ -91,27 +91,92 @@ async def _cmd_order(text: str, user_id: str, group_id: str) -> None:
         await push_text(group_id, f"⚠️ 叫貨失敗：{e}")
 
 
-# ─── /到貨 品項 數量 [店別] ──────────────────────────────────────────
+# ─── /到貨 品項 數量 [單價] [廠商名] [店別] ──────────────────────────
 
 async def _cmd_arrival(text: str, user_id: str, group_id: str) -> None:
+    """Confirm arrival, update inventory, optionally create AP record.
+
+    Formats accepted:
+      /到貨 品項 數量 [店別]
+      /到貨 品項 數量 單價 廠商名 [店別]
+    If a numeric 3rd arg follows qty, it is treated as unit_price.
+    If vendor name is given, an AP record is written to 應付帳款.
+    """
+    import re
+    from datetime import date as _date
     from app.services.inventory_service import confirm_arrival, format_item
 
-    parts = text.split(maxsplit=3)
+    parts = text.split(maxsplit=5)
     if len(parts) < 3:
-        await push_text(group_id, "格式：/到貨 品項 數量 [店別]\n範例：/到貨 青蔥 5斤 福星店")
+        await push_text(
+            group_id,
+            "格式：/到貨 品項 數量 [單價 廠商名] [店別]\n"
+            "不含單價：/到貨 青蔥 5斤 福星店\n"
+            "含單價：  /到貨 青蔥 5斤 120 大成農城 福星店"
+        )
         return
 
     item_name = parts[1]
-    qty, _ = _parse_qty(parts[2])
-    store = parts[3] if len(parts) > 3 else ""
+    qty, unit = _parse_qty(parts[2])
+
+    # Detect optional unit_price: parts[3] is purely numeric
+    unit_price: float = 0.0
+    vendor_name: str = ""
+    store: str = ""
+
+    remaining = parts[3:]  # everything after qty
+    _NUM_RE = re.compile(r"^[\d.]+$")
+
+    if remaining and _NUM_RE.match(remaining[0]):
+        # Has unit price
+        try:
+            unit_price = float(remaining[0])
+        except ValueError:
+            pass
+        remaining = remaining[1:]
+        # Next token is vendor name (if present)
+        if remaining:
+            vendor_name = remaining[0]
+            remaining = remaining[1:]
+        if remaining:
+            store = remaining[0]
+    else:
+        # No unit price — first remaining token is store
+        if remaining:
+            store = remaining[0]
+
     operator = await _fetch_name(user_id)
 
     try:
         item = await confirm_arrival(item_name, qty, store, operator)
-        await push_text(
-            group_id,
-            f"✅ 到貨已確認，庫存已更新\n{format_item(item)}"
-        )
+        msg = f"✅ 到貨已確認，庫存已更新\n{format_item(item)}"
+
+        # If unit price and vendor provided, write AP record
+        if unit_price > 0 and vendor_name:
+            from app.models.vendor import APRecord
+            from app.services.sheets_service import get_vendor, append_ap_record
+
+            vendor = await get_vendor(vendor_name)
+            ap = APRecord(
+                delivery_date=_date.today().isoformat(),
+                vendor_name=vendor_name,
+                item_name=item_name,
+                qty=qty,
+                unit=unit or (item.unit if hasattr(item, "unit") else ""),
+                unit_price=unit_price,
+                invoice_type=vendor.invoice_type if vendor else "",
+                billing_cycle=vendor.billing_cycle if vendor else "",
+            )
+            ap_row = await append_ap_record(ap)
+            msg += (
+                f"\n─────────────\n"
+                f"📋 應付帳款已記錄（第 {ap_row} 列）\n"
+                f"廠商：{vendor_name}　金額：NT${ap.amount:,.0f}"
+            )
+            if vendor and not vendor.line_group_id:
+                msg += f"\nℹ️ {vendor_name} 尚未設定 LINE 群組"
+
+        await push_text(group_id, msg)
     except Exception as e:
         log.error("_cmd_arrival error: %s", e)
         await push_text(group_id, f"⚠️ 到貨登記失敗：{e}")
