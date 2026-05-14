@@ -515,12 +515,16 @@ async def approve_leave_request(
 async def get_vendor(name: str) -> Optional["Vendor"]:
     """Return Vendor from 廠商主檔 by name, or None if not found."""
     from app.models.vendor import Vendor
-    result = await asyncio.to_thread(
-        lambda: _sheets().values().get(
-            spreadsheetId=settings.google_spreadsheet_id,
-            range=f"{SHEET_VENDORS}!A:H",
-        ).execute()
-    )
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_VENDORS}!A:H",
+            ).execute()
+        )
+    except Exception as e:
+        log.error("get_vendor sheets error: %s", e)
+        raise
     rows = result.get("values", [])[1:]  # skip header
     for row in rows:
         if row and row[_VEN_COL_NAME] == name:
@@ -648,13 +652,13 @@ async def mark_ap_paid(vendor_name: str, wire_date: str) -> int:
             range=f"{SHEET_AP}!A:M",
         ).execute()
     )
-    rows = result.get("values", [])
+    rows = result.get("values", [])[1:]  # skip header row; data rows are 1-indexed from row 2
     updated = 0
     for i, row in enumerate(rows):
         def _g(r, idx, default=""):
             return r[idx] if len(r) > idx else default
         if _g(row, _AP_COL_VENDOR) == vendor_name and _g(row, _AP_COL_STATUS) == "待付款":
-            sheet_row = i + 1
+            sheet_row = i + 2  # i=0 → sheet row 2 (row 1 is header)
             range_str = f"{SHEET_AP}!K{sheet_row}:L{sheet_row}"
             await asyncio.to_thread(
                 lambda rng=range_str: _sheets().values().update(
