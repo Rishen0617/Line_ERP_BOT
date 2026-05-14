@@ -66,6 +66,10 @@ async def process_text(
         from app.handlers.inventory_handler import handle_inventory_command
         await handle_inventory_command(text, user_id, group_id)
 
+    elif intent == "vendor":
+        from app.handlers.vendor_handler import handle_vendor_command
+        await handle_vendor_command(text, user_id, group_id)
+
     elif intent == "schedule":
         from app.handlers.schedule_handler import handle_schedule_command
         await handle_schedule_command(text, user_id, group_id)
@@ -206,21 +210,37 @@ async def _handle_slash_menu(group_id: str, is_group: bool) -> None:
     trigger = settings.bot_trigger.strip()
     p = f"{trigger} " if (is_group and trigger) else ""
 
-    items = [
-        ("/月報", f"{p}/月報"),
-        ("/查帳", f"{p}/查帳"),
-        ("/訂單", f"{p}/訂單"),
-        ("/查班表", f"{p}/查班表"),
-        ("/我的工時", f"{p}/我的工時"),
-        ("/今日班表", f"{p}/今日班表"),
-        ("/本週班表", f"{p}/本週班表"),
-        ("/缺工", f"{p}/缺工"),
-        ("/新增班…", f"{p}/新增班 "),
-        ("/核假…", f"{p}/核假 "),
-        ("/myid", f"{p}/myid"),
-        ("/help", f"{p}/help"),
+    # Two Quick Reply messages — finance/schedule + inventory/ecommerce
+    finance_schedule = [
+        ("💰 月報",    f"{p}/月報"),
+        ("📒 查帳",    f"{p}/查帳"),
+        ("📅 今日班表",f"{p}/今日班表"),
+        ("📅 本週班表",f"{p}/本週班表"),
+        ("🕐 我的工時",f"{p}/我的工時"),
+        ("📋 缺工",   f"{p}/缺工"),
+        ("✏️ 請假…",  f"{p}/請假 "),
+        ("✅ 核假…",  f"{p}/核假 "),
+        ("➕ 新增班…", f"{p}/新增班 "),
+        ("🌅 晨報",   f"{p}/晨報"),
+        ("🪪 myid",   f"{p}/myid"),
+        ("❓ help",   f"{p}/help"),
     ]
-    await push_quick_reply(group_id, "請選擇指令 👇", items)
+    await push_quick_reply(group_id, "📊 財務 & 排班 指令 👇", finance_schedule)
+
+    inventory_ecommerce = [
+        ("📦 庫存",    f"{p}/庫存"),
+        ("⚠️ 低庫存",  f"{p}/低庫存"),
+        ("🚛 叫貨…",  f"{p}/叫貨 "),
+        ("✅ 到貨…",  f"{p}/到貨 "),
+        ("📉 消耗…",  f"{p}/消耗 "),
+        ("📊 採購預測", f"{p}/採購預測"),
+        ("🛒 未付款",  f"{p}/未付款"),
+        ("📦 未出貨",  f"{p}/未出貨"),
+        ("📈 電商日報", f"{p}/電商日報"),
+        ("🆕 新增訂單…",f"{p}/新增訂單 "),
+        ("🚚 出貨…",  f"{p}/出貨 "),
+    ]
+    await push_quick_reply(group_id, "📦 庫存 & 電商 指令 👇", inventory_ecommerce)
 
 
 def _quick_parse(text: str) -> tuple[float | None, str, str, str | None]:

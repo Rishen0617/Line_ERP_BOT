@@ -28,6 +28,9 @@ _INVENTORY_COMMANDS = {
     "/叫貨", "/到貨", "/消耗", "/盤點",
     "/安全庫存", "/庫存", "/低庫存", "/採購預測",
 }
+_VENDOR_COMMANDS = {
+    "/廠商設定", "/應付", "/匯款",
+}
 
 
 def route_text(text: str) -> str:
@@ -56,6 +59,9 @@ def route_text(text: str) -> str:
 
     if any(stripped.startswith(cmd) for cmd in _INVENTORY_COMMANDS):
         return "inventory"
+
+    if any(stripped.startswith(cmd) for cmd in _VENDOR_COMMANDS):
+        return "vendor"
 
     if any(stripped.startswith(cmd) for cmd in _SCHEDULE_COMMANDS):
         return "schedule"
