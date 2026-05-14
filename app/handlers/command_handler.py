@@ -91,7 +91,7 @@ async def handle_help(group_id: str, category: str = "") -> None:
             f"  {prefix}/今日班表 [店別]     今日出勤人員\n"
             f"  {prefix}/本週班表 [店別]     本週全店班表\n"
             f"  {prefix}/缺工               本週人力不足日\n"
-            f"  {prefix}/新增班 2026-05-15 王小明 09:00-17:00 福星店 早班\n"
+            f"  {prefix}/新增班 2026-05-15 王小明 13:30-18:30 福星店 午班\n"
             f"  {prefix}/核假 王小明 2026-05-20\n\n"
             "假別：特休 事假 病假 婚假 喪假 補休 其他"
             + footer
@@ -132,7 +132,11 @@ async def handle_help(group_id: str, category: str = "") -> None:
             "📊 狀況總覽\n"
             f"  {prefix}/未付款   所有待付款清單 & 合計\n"
             f"  {prefix}/未出貨   所有待出貨清單\n"
-            f"  {prefix}/電商日報 今日收單摘要"
+            f"  {prefix}/電商日報 今日收單摘要\n\n"
+            f"🏭 廠商管理\n"
+            f"  {prefix}/廠商設定 大成農城 農產品收據 週結 004-帳號 戶名\n"
+            f"  {prefix}/應付 大成農城     查詢待付款明細\n"
+            f"  {prefix}/匯款 大成農城 2026-05-15  記錄匯款＋通知廠商"
             + footer
         )
 

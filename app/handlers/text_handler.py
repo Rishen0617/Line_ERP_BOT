@@ -234,11 +234,12 @@ async def _handle_slash_menu(group_id: str, is_group: bool) -> None:
         ("✅ 到貨…",  f"{p}/到貨 "),
         ("📉 消耗…",  f"{p}/消耗 "),
         ("📊 採購預測", f"{p}/採購預測"),
-        ("🛒 未付款",  f"{p}/未付款"),
-        ("📦 未出貨",  f"{p}/未出貨"),
         ("📈 電商日報", f"{p}/電商日報"),
         ("🆕 新增訂單…",f"{p}/新增訂單 "),
         ("🚚 出貨…",  f"{p}/出貨 "),
+        ("🏭 廠商設定…", f"{p}/廠商設定 "),
+        ("📋 應付…",    f"{p}/應付 "),
+        ("💸 匯款…",    f"{p}/匯款 "),
     ]
     await push_quick_reply(group_id, "📦 庫存 & 電商 指令 👇", inventory_ecommerce)
 
