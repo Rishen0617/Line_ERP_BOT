@@ -49,6 +49,33 @@ SHEET_LEAVE = "請假記錄"
 SHEET_ECOMMERCE = "電商訂單"
 SHEET_INVENTORY = "庫存台帳"
 SHEET_MOVEMENTS = "庫存異動"
+SHEET_VENDORS = "廠商主檔"
+SHEET_AP = "應付帳款"
+
+# Vendor master column indices (0-based, Sheet10)
+_VEN_COL_NAME = 0
+_VEN_COL_INVOICE_TYPE = 1
+_VEN_COL_BILLING_CYCLE = 2
+_VEN_COL_BANK_CODE = 3
+_VEN_COL_ACCOUNT_NO = 4
+_VEN_COL_ACCOUNT_NAME = 5
+_VEN_COL_LINE_GROUP = 6
+_VEN_COL_NOTES = 7
+
+# AP column indices (0-based, Sheet11)
+_AP_COL_DATE = 0
+_AP_COL_VENDOR = 1
+_AP_COL_ITEM = 2
+_AP_COL_QTY = 3
+_AP_COL_UNIT = 4
+_AP_COL_UNIT_PRICE = 5
+_AP_COL_AMOUNT = 6
+_AP_COL_INVOICE_TYPE = 7
+_AP_COL_INVOICE_NO = 8
+_AP_COL_BILLING_CYCLE = 9
+_AP_COL_STATUS = 10
+_AP_COL_WIRE_DATE = 11
+_AP_COL_NOTES = 12
 
 # Inventory column indices (0-based, Sheet8)
 _INV_COL_NAME = 0
@@ -196,6 +223,95 @@ async def get_monthly_summary(year: int, month: int) -> dict[str, Any]:
     except Exception as e:
         log.error("get_monthly_summary error: %s", e)
         raise
+
+
+STORES = ["逢甲店", "福星店", "中科店", "大坑店"]
+
+
+async def get_store_monthly_data(
+    months: int = 6,
+    stores: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Return per-store income + total expense for each of the last N calendar months.
+
+    Result structure (sorted oldest → newest):
+      [{"year":int,"month":int,"stores":{store:income},"income_other":float,"expense":float,"income":float,"net":float}, ...]
+
+    Income attribution: ledger rows where 類別=收入 and 對象 matches a known store name.
+    Unmatched income (other/misc) lands in income_other.
+    """
+    if stores is None:
+        stores = STORES
+
+    today = date.today()
+    target_months: set[tuple[int, int]] = set()
+    for i in range(months - 1, -1, -1):
+        y, m = today.year, today.month - i
+        while m <= 0:
+            m += 12
+            y -= 1
+        target_months.add((y, m))
+
+    try:
+        result = await asyncio.to_thread(
+            lambda: _sheets().values().get(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_LEDGER}!A:E",
+            ).execute()
+        )
+        rows = result.get("values", [])[1:]  # skip header
+    except Exception as e:
+        log.error("get_store_monthly_data error: %s", e)
+        raise
+
+    # Pre-build buckets
+    buckets: dict[tuple[int, int], dict] = {
+        (y, m): {"year": y, "month": m,
+                 "stores": {s: 0.0 for s in stores},
+                 "income_other": 0.0, "expense": 0.0}
+        for y, m in target_months
+    }
+
+    for row in rows:
+        if len(row) < 4:
+            continue
+        date_str = str(row[0])
+        try:
+            yr = int(date_str[:4])
+            mo = int(date_str[5:7])
+        except (ValueError, IndexError):
+            continue
+        key = (yr, mo)
+        if key not in buckets:
+            continue
+        try:
+            amt = float(row[3])
+        except (ValueError, IndexError):
+            continue
+        cat = str(row[1]) if len(row) > 1 else ""
+        obj = str(row[4]) if len(row) > 4 else ""
+
+        if cat == "收入":
+            if obj in stores:
+                buckets[key]["stores"][obj] += amt
+            else:
+                buckets[key]["income_other"] += amt
+        elif cat == "支出":
+            buckets[key]["expense"] += amt
+
+    out = []
+    for key in sorted(buckets.keys()):
+        b = buckets[key]
+        total_income = sum(b["stores"].values()) + b["income_other"]
+        out.append({
+            "year": b["year"], "month": b["month"],
+            "stores": dict(b["stores"]),
+            "income_other": b["income_other"],
+            "expense": b["expense"],
+            "income": total_income,
+            "net": total_income - b["expense"],
+        })
+    return out
 
 
 # ─── Dashboard reads ─────────────────────────────────────────────────
@@ -392,6 +508,164 @@ async def approve_leave_request(
     except Exception as e:
         log.error("approve_leave_request error: %s", e)
         raise
+
+
+# ─── Vendor Master (Sheet10) ──────────────────────────────────────────
+
+async def get_vendor(name: str) -> Optional["Vendor"]:
+    """Return Vendor from 廠商主檔 by name, or None if not found."""
+    from app.models.vendor import Vendor
+    result = await asyncio.to_thread(
+        lambda: _sheets().values().get(
+            spreadsheetId=settings.google_spreadsheet_id,
+            range=f"{SHEET_VENDORS}!A:H",
+        ).execute()
+    )
+    rows = result.get("values", [])[1:]  # skip header
+    for row in rows:
+        if row and row[_VEN_COL_NAME] == name:
+            def _get(r, i, default=""):
+                return r[i] if len(r) > i else default
+            return Vendor(
+                name=_get(row, _VEN_COL_NAME),
+                invoice_type=_get(row, _VEN_COL_INVOICE_TYPE) or "農產品收據",
+                billing_cycle=_get(row, _VEN_COL_BILLING_CYCLE) or "週結",
+                bank_code=_get(row, _VEN_COL_BANK_CODE),
+                account_number=_get(row, _VEN_COL_ACCOUNT_NO),
+                account_name=_get(row, _VEN_COL_ACCOUNT_NAME),
+                line_group_id=_get(row, _VEN_COL_LINE_GROUP),
+                notes=_get(row, _VEN_COL_NOTES),
+            )
+    return None
+
+
+async def upsert_vendor(vendor: "Vendor") -> None:
+    """Insert or update a vendor row in 廠商主檔.
+
+    If a row with vendor.name exists, overwrite it. Otherwise append.
+    """
+    result = await asyncio.to_thread(
+        lambda: _sheets().values().get(
+            spreadsheetId=settings.google_spreadsheet_id,
+            range=f"{SHEET_VENDORS}!A:A",
+        ).execute()
+    )
+    names = [r[0] if r else "" for r in result.get("values", [])]
+    row_data = [
+        vendor.name,
+        vendor.invoice_type,
+        vendor.billing_cycle,
+        vendor.bank_code,
+        vendor.account_number,
+        vendor.account_name,
+        vendor.line_group_id,
+        vendor.notes,
+    ]
+    try:
+        idx = names.index(vendor.name)  # 1-based sheet row
+        range_str = f"{SHEET_VENDORS}!A{idx + 1}:H{idx + 1}"
+        await asyncio.to_thread(
+            lambda: _sheets().values().update(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=range_str,
+                valueInputOption="RAW",
+                body={"values": [row_data]},
+            ).execute()
+        )
+    except ValueError:
+        # Not found — append
+        await asyncio.to_thread(
+            lambda: _sheets().values().append(
+                spreadsheetId=settings.google_spreadsheet_id,
+                range=f"{SHEET_VENDORS}!A:H",
+                valueInputOption="RAW",
+                insertDataOption="INSERT_ROWS",
+                body={"values": [row_data]},
+            ).execute()
+        )
+
+
+# ─── AP Records (Sheet11) ─────────────────────────────────────────────
+
+async def append_ap_record(ap: "APRecord") -> int:
+    """Append a row to 應付帳款. Returns 1-based row number."""
+    row = [
+        ap.delivery_date,       # A 到貨日期
+        ap.vendor_name,         # B 廠商名
+        ap.item_name,           # C 品項
+        ap.qty,                 # D 數量
+        ap.unit,                # E 單位
+        ap.unit_price,          # F 單價
+        ap.amount,              # G 金額
+        ap.invoice_type,        # H 發票類型
+        ap.invoice_number,      # I 單號
+        ap.billing_cycle,       # J 請款週期
+        ap.status,              # K 狀態
+        ap.wire_date,           # L 匯款日期
+        ap.notes,               # M 備註
+    ]
+    return await _append_row(SHEET_AP, row)
+
+
+async def get_pending_ap(vendor_name: str) -> list["APRecord"]:
+    """Return all 待付款 AP rows for the given vendor."""
+    from app.models.vendor import APRecord
+    result = await asyncio.to_thread(
+        lambda: _sheets().values().get(
+            spreadsheetId=settings.google_spreadsheet_id,
+            range=f"{SHEET_AP}!A:M",
+        ).execute()
+    )
+    rows = result.get("values", [])[1:]  # skip header
+    records: list[APRecord] = []
+    for row in rows:
+        def _g(r, i, default=""):
+            return r[i] if len(r) > i else default
+        if _g(row, _AP_COL_VENDOR) == vendor_name and _g(row, _AP_COL_STATUS) == "待付款":
+            records.append(APRecord(
+                delivery_date=_g(row, _AP_COL_DATE),
+                vendor_name=_g(row, _AP_COL_VENDOR),
+                item_name=_g(row, _AP_COL_ITEM),
+                qty=float(_g(row, _AP_COL_QTY) or 0),
+                unit=_g(row, _AP_COL_UNIT),
+                unit_price=float(_g(row, _AP_COL_UNIT_PRICE) or 0),
+                amount=float(_g(row, _AP_COL_AMOUNT) or 0),
+                invoice_type=_g(row, _AP_COL_INVOICE_TYPE),
+                invoice_number=_g(row, _AP_COL_INVOICE_NO),
+                billing_cycle=_g(row, _AP_COL_BILLING_CYCLE),
+                status="待付款",
+                wire_date=_g(row, _AP_COL_WIRE_DATE),
+                notes=_g(row, _AP_COL_NOTES),
+            ))
+    return records
+
+
+async def mark_ap_paid(vendor_name: str, wire_date: str) -> int:
+    """Mark all 待付款 rows for vendor as 已匯款. Returns count updated."""
+    result = await asyncio.to_thread(
+        lambda: _sheets().values().get(
+            spreadsheetId=settings.google_spreadsheet_id,
+            range=f"{SHEET_AP}!A:M",
+        ).execute()
+    )
+    rows = result.get("values", [])
+    updated = 0
+    for i, row in enumerate(rows):
+        def _g(r, idx, default=""):
+            return r[idx] if len(r) > idx else default
+        if _g(row, _AP_COL_VENDOR) == vendor_name and _g(row, _AP_COL_STATUS) == "待付款":
+            sheet_row = i + 1
+            range_str = f"{SHEET_AP}!K{sheet_row}:L{sheet_row}"
+            await asyncio.to_thread(
+                lambda rng=range_str: _sheets().values().update(
+                    spreadsheetId=settings.google_spreadsheet_id,
+                    range=rng,
+                    valueInputOption="RAW",
+                    body={"values": [["已匯款", wire_date]]},
+                ).execute()
+            )
+            updated += 1
+    return updated
 
 
 # ─── internal helper ──────────────────────────────────────────────────
