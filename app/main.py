@@ -98,6 +98,7 @@ async def dashboard_data(months: int = 6, bust: bool = False) -> dict[str, Any]:
         get_monthly_summary, get_recent_receipts, get_recent_orders,
         get_all_inventory_items, get_ecommerce_orders_by_status,
         get_shifts_by_date, get_shifts_by_date_range,
+        get_store_monthly_data,
     )
 
     global _dashboard_cache, _dashboard_cache_time
@@ -125,25 +126,24 @@ async def dashboard_data(months: int = 6, bust: bool = False) -> dict[str, Any]:
                  "payable": 0, "receivable": 0, "net": 0}
         monthly.append(s)
 
-    # ── Parallel fetch ───────────────────────────────────────────────
+    # ── Sequential fetch (httplib2 is not thread-safe; avoid concurrent to_thread) ──
     async def safe(coro, default):
         try:
             return await coro
-        except Exception:
+        except Exception as e:
+            log.error("dashboard safe() caught: %s: %s", type(e).__name__, e)
             return default
 
     monday, sunday = week_range(today)
 
-    receipts, proc_orders, inventory, ec_unpaid, ec_unshipped, today_shifts, week_shifts = \
-        await asyncio.gather(
-            safe(get_recent_receipts(30), []),
-            safe(get_recent_orders(30), []),
-            safe(get_all_inventory_items(), []),
-            safe(get_ecommerce_orders_by_status(payment_status="未付款"), []),
-            safe(get_ecommerce_orders_by_status(ship_status="待出貨"), []),
-            safe(get_shifts_by_date(today), []),
-            safe(get_shifts_by_date_range(monday, sunday), []),
-        )
+    receipts      = await safe(get_recent_receipts(30), [])
+    proc_orders   = await safe(get_recent_orders(30), [])
+    inventory     = await safe(get_all_inventory_items(), [])
+    ec_unpaid     = await safe(get_ecommerce_orders_by_status(payment_status="未付款"), [])
+    ec_unshipped  = await safe(get_ecommerce_orders_by_status(ship_status="待出貨"), [])
+    today_shifts  = await safe(get_shifts_by_date(today), [])
+    week_shifts   = await safe(get_shifts_by_date_range(monday, sunday), [])
+    store_monthly = await safe(get_store_monthly_data(months), [])
 
     # Serialize inventory items
     inv_data = [
@@ -180,6 +180,7 @@ async def dashboard_data(months: int = 6, bust: bool = False) -> dict[str, Any]:
         "ok": True,
         "cached": False,
         "monthly": monthly,
+        "store_monthly": store_monthly,
         "receipts": receipts,
         "orders": proc_orders,
         "inventory": inv_data,

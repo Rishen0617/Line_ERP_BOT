@@ -196,10 +196,10 @@ async def _cmd_add_shift(text: str, user_id: str, group_id: str) -> None:
     start_time, end_time = parsed_times
 
     store = parts[4]
-    shift_type = parts[5] if len(parts) > 5 else "早班"
+    shift_type = parts[5] if len(parts) > 5 else "午班"
     valid_types = list(_SHIFT_HOURS.keys())
     if shift_type not in valid_types:
-        shift_type = "早班"
+        shift_type = "午班"
 
     try:
         shift, warnings = await add_shift(

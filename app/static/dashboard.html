@@ -171,8 +171,8 @@ a:hover{text-decoration:underline}
     </div>
 
     <div class="section">
-      <div class="section-title">📈 近 6 個月收支</div>
-      <div class="chart-wrap"><canvas id="chart-finance"></canvas></div>
+      <div class="section-title">📈 各店月營收（堆疊）& 總支出</div>
+      <div class="chart-wrap" style="height:280px"><canvas id="chart-finance"></canvas></div>
     </div>
 
     <div class="section">
@@ -432,7 +432,7 @@ function render(d){
 }
 
 // ── Finance ──────────────────────────────────────────────────────────
-function renderFinance({monthly, receipts, orders}){
+function renderFinance({monthly, receipts, orders, store_monthly}){
   const cur = monthly[monthly.length-1]||{};
   $('k-income').textContent   = fmtAmt(cur.income);
   $('k-expense').textContent  = fmtAmt(cur.expense);
@@ -445,21 +445,72 @@ function renderFinance({monthly, receipts, orders}){
   const pending = (orders||[]).filter(o=>!o.status.includes('到貨')).length;
   $('k-orders').textContent = pending;
 
-  // Chart
-  const labels = monthly.map(m=>`${m.year}/${String(m.month).padStart(2,'0')}`);
+  // Stacked bar chart – per-store income + total expense
+  const sm = (store_monthly && store_monthly.length) ? store_monthly : monthly;
+  const useStoreSplit = !!(store_monthly && store_monthly.length && store_monthly[0].stores);
+  const labels = sm.map(m=>`${m.year}/${String(m.month).padStart(2,'0')}`);
+  const STORES = ["逢甲店","福星店","中科店","大坑店"];
+  const STORE_COLORS = [
+    "rgba(59,130,246,.85)",   // blue  – 逢甲
+    "rgba(34,197,94,.85)",    // green – 福星
+    "rgba(251,146,60,.85)",   // orange– 中科
+    "rgba(168,85,247,.85)",   // purple– 大坑
+  ];
+
+  let datasets = [];
+  if(useStoreSplit){
+    STORES.forEach((s,i)=>{
+      datasets.push({
+        label: s,
+        data: sm.map(m => m.stores ? (parseFloat(m.stores[s])||0) : 0),
+        backgroundColor: STORE_COLORS[i],
+        borderRadius: 3,
+        stack: 'income',
+      });
+    });
+    // 其他收入 (misc)
+    const hasOther = sm.some(m=>m.income_other>0);
+    if(hasOther){
+      datasets.push({
+        label:'其他收入',
+        data: sm.map(m=>parseFloat(m.income_other)||0),
+        backgroundColor:'rgba(20,184,166,.75)',
+        borderRadius:3,
+        stack:'income',
+      });
+    }
+  } else {
+    datasets.push({
+      label:'收入',
+      data: sm.map(m=>parseFloat(m.income)||0),
+      backgroundColor:'rgba(34,197,94,.75)',
+      borderRadius:3,
+      stack:'income',
+    });
+  }
+  datasets.push({
+    label:'總支出',
+    data: sm.map(m=>parseFloat(m.expense)||0),
+    backgroundColor:'rgba(239,68,68,.78)',
+    borderRadius:3,
+    stack:'expense',
+  });
+
   if(charts.finance) charts.finance.destroy();
   charts.finance = new Chart($('chart-finance'),{
     type:'bar',
-    data:{
-      labels,
-      datasets:[
-        {label:'收入',data:monthly.map(m=>parseFloat(m.income)||0),backgroundColor:'rgba(34,197,94,.75)',borderRadius:5},
-        {label:'支出',data:monthly.map(m=>parseFloat(m.expense)||0),backgroundColor:'rgba(239,68,68,.75)',borderRadius:5},
-      ]
-    },
-    options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{position:'top'}},
-      scales:{y:{ticks:{callback:v=>'$'+v.toLocaleString()}}}}
+    data:{ labels, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{position:'top', labels:{boxWidth:12,font:{size:11}}},
+        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: $${ctx.parsed.y.toLocaleString()}`}},
+      },
+      scales:{
+        x:{ stacked:true },
+        y:{ stacked:true, ticks:{callback:v=>'$'+(v/1000).toFixed(0)+'k'} },
+      }
+    }
   });
 
   // Receipts

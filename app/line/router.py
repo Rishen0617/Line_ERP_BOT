@@ -8,6 +8,9 @@ _TRACKING_RE = re.compile(
     r"\b([A-Z]{2}\d{10,12}|[A-Z]{1}\d{11}|\d{12}|\d{15})\b"
 )
 
+# Natural-language 叫貨 patterns (e.g. "叫貨：...", "今日叫貨 ...", "叫貨 ...")
+_ORDER_NL_RE = re.compile(r"^(今日叫貨|叫貨[：:﹕]?\s*\S)")
+
 _ORDER_KEYWORDS = {"叫貨", "訂購", "下單", "訂", "進貨", "採購"}
 _ACCOUNTING_KEYWORDS = {"收入", "支出", "付款", "收款", "應付", "應收", "記帳"}
 _REPORT_COMMANDS = {"/月報", "/查帳", "/報表", "/餘額"}
@@ -58,6 +61,10 @@ def route_text(text: str) -> str:
         return "ecommerce"
 
     if any(stripped.startswith(cmd) for cmd in _INVENTORY_COMMANDS):
+        return "inventory"
+
+    # Natural-language 叫貨 (e.g. "叫貨：青蔥 5斤", "今日叫貨 青蔥5斤 蛋2箱")
+    if _ORDER_NL_RE.match(stripped):
         return "inventory"
 
     if any(stripped.startswith(cmd) for cmd in _VENDOR_COMMANDS):

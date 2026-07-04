@@ -2,9 +2,9 @@
 
 Commands
 --------
-  /叫貨 品項 數量 [店別] [備註]
-      快速叫貨，通知中央工廠
-  /到貨 品項 數量 [店別]
+  /叫貨 品項 數量 [品項2 數量2 ...] [店別] [備註]
+      快速叫貨（支援多品項），通知中央工廠
+  /到貨 品項 數量 [單價 廠商名] [店別]
       確認到貨，更新庫存
   /消耗 品項 數量 [店別]
       記錄日常消耗，扣減庫存
@@ -18,15 +18,62 @@ Commands
       列出所有低於安全庫存的品項
   /採購預測
       基於30日消耗率推估補貨需求
+
+自然語言格式（明倫蛋餅）
+  叫貨：青蔥 5斤 雞蛋 2箱
+  今日叫貨 青蔥5斤 蛋2箱
+  /叫貨 青蔥 5斤 雞蛋 2箱
 """
 from __future__ import annotations
 
 import logging
+import re
+from datetime import datetime
+from typing import NamedTuple
 
 from app.line.reply import push_text
 
 log = logging.getLogger(__name__)
 
+# ─── 明倫品項別名對照表 ───────────────────────────────────────────────
+# key = 別名（lowercase），value = (正式名稱, 預設單位)
+_MINGLUN_ITEMS: dict[str, tuple[str, str]] = {
+    # 青蔥
+    "青蔥": ("青蔥", "斤"),
+    "蔥":   ("青蔥", "斤"),
+    # 雞蛋
+    "雞蛋": ("雞蛋", "箱"),
+    "蛋":   ("雞蛋", "箱"),
+    # 醬料
+    "醬料": ("醬料", "桶"),
+    "醬":   ("醬料", "桶"),
+    # 包材
+    "包材": ("包材", "包"),
+    "袋子": ("包材", "包"),
+    "包裝": ("包材", "包"),
+    # 蛋餅皮
+    "蛋餅皮": ("蛋餅皮", "箱"),
+    "餅皮":   ("蛋餅皮", "箱"),
+    "皮":     ("蛋餅皮", "箱"),
+    # 培根
+    "培根": ("培根", "包"),
+    "bacon": ("培根", "包"),
+    # 起司
+    "起司": ("起司", "包"),
+    "起士": ("起司", "包"),
+    "cheese": ("起司", "包"),
+}
+
+_KNOWN_UNITS = {"斤", "箱", "桶", "包", "袋", "個", "條", "瓶", "片", "公斤", "kg"}
+
+
+class OrderItem(NamedTuple):
+    name: str
+    qty: float
+    unit: str
+
+
+# ─── public entry point ──────────────────────────────────────────────
 
 async def handle_inventory_command(
     text: str,
@@ -51,44 +98,139 @@ async def handle_inventory_command(
         await _cmd_forecast(group_id)
     elif s.startswith("/庫存"):
         await _cmd_query(s, group_id)
+    else:
+        # Natural-language 叫貨: "叫貨：...", "今日叫貨 ..."
+        await _cmd_order_nl(s, user_id, group_id)
 
 
-# ─── /叫貨 品項 數量 [店別] [備註] ───────────────────────────────────
+# ─── /叫貨 — supports multiple items ─────────────────────────────────
 
 async def _cmd_order(text: str, user_id: str, group_id: str) -> None:
+    """Handle /叫貨 with support for multiple items.
+
+    Accepted formats:
+      /叫貨 青蔥 5斤 福星店
+      /叫貨 青蔥 5斤 雞蛋 2箱 福星店
+      /叫貨 青蔥 5 雞蛋 2 福星店 急用
+    """
+    # Strip the command token
+    body = text[len("/叫貨"):].strip()
+    await _process_order(body, user_id, group_id)
+
+
+async def _cmd_order_nl(text: str, user_id: str, group_id: str) -> None:
+    """Handle natural-language 叫貨 messages routed from router.py.
+
+    Accepted formats:
+      叫貨：青蔥 5斤 雞蛋 2箱
+      叫貨:青蔥 5 雞蛋 2
+      今日叫貨 青蔥5斤 蛋2箱
+    """
+    # Strip leading trigger words
+    body = re.sub(r"^(今日叫貨|叫貨[：:﹕]?\s*)", "", text).strip()
+    await _process_order(body, user_id, group_id)
+
+
+async def _process_order(body: str, user_id: str, group_id: str) -> None:
+    """Parse items from body and write purchase order(s) to Sheets.
+
+    Body is everything after the command/trigger prefix, e.g.:
+      "青蔥 5斤 雞蛋 2箱 福星店"
+      "青蔥5斤、蛋2箱"
+    """
     from app.services.inventory_service import quick_order
 
-    # /叫貨 青蔥 5 福星店 急
-    parts = text.split(maxsplit=4)
-    if len(parts) < 3:
+    if not body:
         await push_text(
             group_id,
-            "格式：/叫貨 品項 數量 [店別] [備註]\n"
-            "範例：/叫貨 青蔥 5斤 福星店"
+            "格式：/叫貨 品項 數量 [品項2 數量2 ...] [店別]\n"
+            "範例：/叫貨 青蔥 5斤 雞蛋 2箱 福星店\n"
+            "自然語言：叫貨：青蔥5斤、蛋2箱",
         )
         return
 
-    item_name = parts[1]
-    qty, unit = _parse_qty(parts[2])
-    store = parts[3] if len(parts) > 3 else ""
-    notes = parts[4] if len(parts) > 4 else ""
-    operator = await _fetch_name(user_id)
+    items, store, notes = _parse_order_body(body)
+    if not items:
+        await push_text(
+            group_id,
+            "⚠️ 無法辨識品項，請確認格式：\n"
+            "/叫貨 青蔥 5斤 雞蛋 2箱\n"
+            "叫貨：青蔥 5斤、蛋 2箱",
+        )
+        return
 
-    try:
-        movement, warnings = await quick_order(item_name, qty, store, operator, notes)
-        lines = [
-            f"✅ 叫貨已登記",
-            f"品項：{item_name}　數量：{qty}{unit or movement.unit}",
-        ]
+    operator = await _fetch_name(user_id)
+    now_str = _now_taipei()
+
+    succeeded: list[str] = []
+    warnings: list[str] = []
+    failed: list[str] = []
+
+    for item in items:
+        try:
+            movement, item_warnings = await quick_order(
+                item.name, item.qty, store, operator, notes
+            )
+            succeeded.append(
+                f"• {item.name} {item.qty}{item.unit or movement.unit}"
+            )
+            warnings.extend(item_warnings)
+        except Exception as e:
+            log.error("_process_order quick_order error [%s]: %s", item.name, e)
+            failed.append(f"• {item.name}：{e}")
+
+    # Reply to origin group
+    if succeeded:
+        lines = ["✅ 叫貨已登記"]
         if store:
             lines.append(f"店別：{store}")
-        lines.append(f"叫貨人：{operator}　時間：{movement.moved_at}")
+        lines.append("品項：")
+        lines.extend(succeeded)
+        lines.append(f"叫貨人：{operator}　時間：{now_str}")
         if warnings:
             lines.extend(warnings)
         await push_text(group_id, "\n".join(lines))
+
+    if failed:
+        await push_text(group_id, "⚠️ 以下品項叫貨失敗：\n" + "\n".join(failed))
+
+    # Forward to factory group if configured
+    if succeeded:
+        await _forward_to_factory(items, store, operator, now_str, group_id)
+
+
+async def _forward_to_factory(
+    items: list[OrderItem],
+    store: str,
+    creator_name: str,
+    now: str,
+    origin_group_id: str,
+) -> None:
+    """Push order notification to central factory LINE group if configured."""
+    from app.config import settings
+
+    factory_group = settings.factory_line_group_id
+    if not factory_group:
+        return
+    if factory_group == origin_group_id:
+        # Avoid duplicate message when order is placed from the factory group itself
+        return
+
+    store_label = store if store else "（未指定）"
+    item_lines = "\n".join(
+        f"• {it.name} {it.qty}{it.unit}" for it in items
+    )
+    msg = (
+        f"📦 新叫貨單\n"
+        f"店別：{store_label}\n"
+        f"品項：\n{item_lines}\n"
+        f"建立者：{creator_name}\n"
+        f"時間：{now}"
+    )
+    try:
+        await push_text(factory_group, msg)
     except Exception as e:
-        log.error("_cmd_order error: %s", e)
-        await push_text(group_id, f"⚠️ 叫貨失敗：{e}")
+        log.error("_forward_to_factory push failed: %s", e)
 
 
 # ─── /到貨 品項 數量 [單價] [廠商名] [店別] ──────────────────────────
@@ -102,7 +244,6 @@ async def _cmd_arrival(text: str, user_id: str, group_id: str) -> None:
     If a numeric 3rd arg follows qty, it is treated as unit_price.
     If vendor name is given, an AP record is written to 應付帳款.
     """
-    import re
     from datetime import date as _date
     from app.services.inventory_service import confirm_arrival, format_item
 
@@ -112,7 +253,7 @@ async def _cmd_arrival(text: str, user_id: str, group_id: str) -> None:
             group_id,
             "格式：/到貨 品項 數量 [單價 廠商名] [店別]\n"
             "不含單價：/到貨 青蔥 5斤 福星店\n"
-            "含單價：  /到貨 青蔥 5斤 120 大成農城 福星店"
+            "含單價：  /到貨 青蔥 5斤 120 大成農城 福星店",
         )
         return
 
@@ -124,24 +265,21 @@ async def _cmd_arrival(text: str, user_id: str, group_id: str) -> None:
     vendor_name: str = ""
     store: str = ""
 
-    remaining = parts[3:]  # everything after qty
+    remaining = parts[3:]
     _NUM_RE = re.compile(r"^[\d.]+$")
 
     if remaining and _NUM_RE.match(remaining[0]):
-        # Has unit price
         try:
             unit_price = float(remaining[0])
         except ValueError:
             pass
         remaining = remaining[1:]
-        # Next token is vendor name (if present)
         if remaining:
             vendor_name = remaining[0]
             remaining = remaining[1:]
         if remaining:
             store = remaining[0]
     else:
-        # No unit price — first remaining token is store
         if remaining:
             store = remaining[0]
 
@@ -151,7 +289,6 @@ async def _cmd_arrival(text: str, user_id: str, group_id: str) -> None:
         item = await confirm_arrival(item_name, qty, store, operator)
         msg = f"✅ 到貨已確認，庫存已更新\n{format_item(item)}"
 
-        # If unit price and vendor provided, write AP record
         if unit_price > 0 and vendor_name:
             from app.models.vendor import APRecord
             from app.services.sheets_service import get_vendor, append_ap_record
@@ -318,8 +455,10 @@ async def _cmd_forecast(group_id: str) -> None:
 # ─── helpers ─────────────────────────────────────────────────────────
 
 def _parse_qty(text: str) -> tuple[float, str]:
-    """Parse '5斤' or '5' → (5.0, '斤') or (5.0, '')."""
-    import re
+    """Parse '5斤' or '5' → (5.0, '斤') or (5.0, '').
+
+    Handles glued unit like '5斤', '2箱', '1.5桶'.
+    """
     m = re.match(r"([\d.]+)(.*)", text.strip())
     if m:
         try:
@@ -327,6 +466,109 @@ def _parse_qty(text: str) -> tuple[float, str]:
         except ValueError:
             pass
     return 1.0, ""
+
+
+def _normalize_item_name(raw: str) -> tuple[str, str]:
+    """Resolve alias → (canonical_name, default_unit).
+
+    Falls back to (raw, '') if unknown.
+    """
+    hit = _MINGLUN_ITEMS.get(raw) or _MINGLUN_ITEMS.get(raw.lower())
+    if hit:
+        return hit
+    return raw, ""
+
+
+def _parse_order_body(body: str) -> tuple[list[OrderItem], str, str]:
+    """Parse the body of a 叫貨 command into items, store name, and notes.
+
+    Strategy:
+    1. Split on whitespace / 頓號 「、」
+    2. Walk tokens left-to-right:
+       - If token is a known item name (or alias) → start new item
+       - If current item exists and token looks like a qty → assign qty+unit
+       - Otherwise → leftover (store/notes candidate)
+
+    Returns:
+      items : list of OrderItem
+      store : store name string (may be "")
+      notes : extra notes string (may be "")
+    """
+    # Normalise separators: replace 、with space
+    body = body.replace("、", " ").replace("，", " ").replace(",", " ")
+
+    # Split glued "蛋2箱" → ["蛋", "2箱"] by inserting space before digit after CJK
+    body = re.sub(r"([^\d\s])(\d)", r"\1 \2", body)
+
+    tokens = body.split()
+
+    items: list[OrderItem] = []
+    leftovers: list[str] = []
+
+    # State machine
+    current_name: str | None = None
+    current_unit_default: str = ""
+
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+
+        # Check if this token is a known item name (or alias)
+        canonical, default_unit = _normalize_item_name(tok)
+        if canonical != tok or tok in _MINGLUN_ITEMS:
+            # Flush previous item (qty unknown yet → qty=1)
+            if current_name is not None:
+                items.append(OrderItem(current_name, 1.0, current_unit_default))
+            current_name = canonical
+            current_unit_default = default_unit
+            i += 1
+            continue
+
+        # Check if looks like a qty token (starts with digit, possibly ends with unit)
+        qty_match = re.match(r"^([\d.]+)(.*)$", tok)
+        if qty_match:
+            qty_val = float(qty_match.group(1))
+            qty_unit = qty_match.group(2).strip()
+            if not qty_unit and current_unit_default:
+                qty_unit = current_unit_default
+            if current_name is not None:
+                items.append(OrderItem(current_name, qty_val, qty_unit))
+                current_name = None
+                current_unit_default = ""
+            else:
+                leftovers.append(tok)
+            i += 1
+            continue
+
+        # Token is neither a known item nor a qty → treat as store/notes leftover
+        if current_name is not None:
+            # Might be next item or store; if we haven't assigned qty, flush with qty=1
+            items.append(OrderItem(current_name, 1.0, current_unit_default))
+            current_name = None
+            current_unit_default = ""
+        leftovers.append(tok)
+        i += 1
+
+    # Flush last pending item
+    if current_name is not None:
+        items.append(OrderItem(current_name, 1.0, current_unit_default))
+
+    # Interpret leftovers: first unknown token = store, rest = notes
+    store = leftovers[0] if leftovers else ""
+    notes = " ".join(leftovers[1:]) if len(leftovers) > 1 else ""
+
+    return items, store, notes
+
+
+def _now_taipei() -> str:
+    """Return current datetime string in Asia/Taipei timezone."""
+    try:
+        from zoneinfo import ZoneInfo  # Python 3.9+
+        tz = ZoneInfo("Asia/Taipei")
+    except ImportError:
+        import pytz  # type: ignore[import]
+        tz = pytz.timezone("Asia/Taipei")
+    return datetime.now(tz).strftime("%Y-%m-%d %H:%M")
 
 
 async def _fetch_name(user_id: str) -> str:

@@ -17,11 +17,12 @@ _TZ = ZoneInfo(settings.bot_timezone)
 MIN_STAFF_PER_DAY: int = 2
 
 _SHIFT_HOURS: dict[ShiftType, tuple[time, time]] = {
-    "早班":   (time(7, 0), time(15, 0)),
+    "早班":   (time(7, 0),  time(15, 0)),
+    "午班":   (time(13, 30), time(18, 30)),
     "中班":   (time(11, 0), time(19, 0)),
-    "晚班":   (time(15, 0), time(23, 0)),
+    "晚班":   (time(18, 30), time(23, 30)),
     "大夜班": (time(23, 0), time(7, 0)),
-    "全天班": (time(8, 0), time(20, 0)),
+    "全天班": (time(8, 0),  time(20, 0)),
 }
 
 

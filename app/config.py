@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     admin_line_user_id: str = Field("", alias="ADMIN_LINE_USER_ID")
     bot_timezone: str = Field("Asia/Taipei", alias="BOT_TIMEZONE")
 
+    # Factory LINE group: purchase orders are forwarded here after being written to Sheets.
+    # Set FACTORY_LINE_GROUP_ID in Railway env vars to the central factory LINE group ID.
+    # Leave empty to disable forwarding.
+    factory_line_group_id: str = Field("", alias="FACTORY_LINE_GROUP_ID")
+
     # Group trigger: only respond in group chats when message starts with this keyword.
     # Set to empty string "" to respond to all messages (default for private chats).
     # Example: "@ERP" → users type "@ERP 支出 3200" or "@ERP /月報"

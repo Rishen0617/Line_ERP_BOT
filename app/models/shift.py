@@ -7,7 +7,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, field_validator, model_validator
 
 
-ShiftType = Literal["早班", "中班", "晚班", "大夜班", "全天班"]
+ShiftType = Literal["早班", "午班", "中班", "晚班", "大夜班", "全天班"]
 ShiftStatus = Literal["正常", "請假", "代班", "缺工"]
 LeaveType = Literal["特休", "事假", "病假", "婚假", "喪假", "補休", "其他"]
 LeaveStatus = Literal["待審", "核准", "拒絕"]
