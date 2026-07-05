@@ -531,13 +531,21 @@ def _parse_order_body(body: str) -> tuple[list[OrderItem], str, str]:
             qty_unit = qty_match.group(2).strip()
             if not qty_unit and current_unit_default:
                 qty_unit = current_unit_default
+            # If unit was inferred from default, the next token might be the literal
+            # unit word (e.g. "青蔥 5 斤" → tok="5", next="斤"). Skip it to avoid
+            # it being misinterpreted as a store name.
+            skip_next = (
+                not qty_match.group(2).strip()      # no unit glued to the number
+                and i + 1 < len(tokens)
+                and tokens[i + 1] in _KNOWN_UNITS
+            )
             if current_name is not None:
                 items.append(OrderItem(current_name, qty_val, qty_unit))
                 current_name = None
                 current_unit_default = ""
             else:
                 leftovers.append(tok)
-            i += 1
+            i += 2 if skip_next else 1
             continue
 
         # Token is neither a known item nor a qty → treat as store/notes leftover

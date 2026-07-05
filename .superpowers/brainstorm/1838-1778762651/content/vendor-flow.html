@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>明倫餐飲集團 — 廠商進貨請款匯款流程</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 24px 16px 48px; }
+
+  h1 { text-align: center; font-size: 1.4rem; color: #f8fafc; margin-bottom: 4px; }
+  .subtitle { text-align: center; color: #94a3b8; font-size: 0.85rem; margin-bottom: 28px; }
+
+  /* ── Layout ── */
+  .page { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .full-width { grid-column: 1 / -1; }
+
+  /* ── Section headers ── */
+  .section-title {
+    font-size: 0.75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    color: #64748b; margin-bottom: 10px; padding-left: 4px;
+  }
+
+  /* ── Flow column ── */
+  .flow { display: flex; flex-direction: column; align-items: center; gap: 0; }
+
+  /* ── Node types ── */
+  .node {
+    width: 100%; max-width: 280px;
+    border-radius: 10px; padding: 10px 14px;
+    font-size: 0.82rem; line-height: 1.5;
+    position: relative; text-align: center;
+    font-weight: 500;
+  }
+  .node-trigger  { background: #1e3a5f; border: 1.5px solid #3b82f6; color: #93c5fd; }
+  .node-action   { background: #1e3a5f; border: 1.5px solid #6366f1; color: #c7d2fe; }
+  .node-ai       { background: #1a2e1a; border: 1.5px solid #22c55e; color: #86efac; }
+  .node-store    { background: #2d1b0e; border: 1.5px solid #f97316; color: #fed7aa; }
+  .node-decision { background: #2d1f00; border: 1.5px solid #eab308; color: #fde68a; border-radius: 6px; transform: none; }
+  .node-terminal { background: #1a1a2e; border: 1.5px solid #8b5cf6; color: #ddd6fe; }
+  .node-success  { background: #0d2416; border: 1.5px solid #10b981; color: #6ee7b7; }
+  .node-warn     { background: #2d1b1b; border: 1.5px solid #ef4444; color: #fca5a5; }
+  .node-master   { background: #1e293b; border: 1.5px solid #94a3b8; color: #cbd5e1; }
+
+  .node .cmd { font-family: monospace; font-size: 0.78rem; background: rgba(0,0,0,.3); padding: 2px 6px; border-radius: 4px; margin-top: 4px; display: inline-block; }
+  .node .tag { font-size: 0.68rem; opacity: .7; margin-top: 2px; }
+  .node .icon { font-size: 1.1rem; margin-bottom: 2px; }
+
+  /* ── Arrow ── */
+  .arrow { width: 2px; height: 18px; background: #334155; margin: 0 auto; position: relative; }
+  .arrow::after { content: '▼'; position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); font-size: 0.55rem; color: #475569; }
+
+  .arrow-label {
+    font-size: 0.68rem; color: #64748b; text-align: center;
+    margin: -4px 0 2px; padding: 0 8px;
+  }
+
+  /* ── Branch ── */
+  .branch-row { display: flex; gap: 12px; width: 100%; justify-content: center; }
+  .branch-col { display: flex; flex-direction: column; align-items: center; flex: 1; max-width: 160px; gap: 0; }
+  .branch-label { font-size: 0.68rem; color: #64748b; margin-bottom: 6px; text-align: center; }
+
+  .branch-join { width: 90%; height: 1px; background: #334155; margin: 0 auto; }
+  .branch-line { width: 1px; background: #334155; height: 28px; }
+  .branch-top  { height: 1px; background: #334155; width: 100%; }
+
+  /* ── Right panel items ── */
+  .panel { background: #1e293b; border-radius: 10px; padding: 14px; border: 1px solid #334155; }
+  .panel h3 { font-size: 0.82rem; color: #e2e8f0; margin-bottom: 10px; }
+  .panel-row { display: flex; align-items: flex-start; gap: 8px; padding: 7px 0; border-bottom: 1px solid #1e293b; }
+  .panel-row:last-child { border-bottom: none; }
+  .panel-icon { font-size: 1rem; min-width: 22px; }
+  .panel-text { font-size: 0.78rem; color: #cbd5e1; line-height: 1.5; }
+  .panel-text .lbl { color: #94a3b8; font-size: 0.7rem; }
+  .panel-text code { font-family: monospace; font-size: 0.73rem; background: #0f172a; padding: 1px 5px; border-radius: 3px; color: #7dd3fc; }
+
+  /* ── Accounts table ── */
+  .acc-table { width: 100%; font-size: 0.75rem; border-collapse: collapse; }
+  .acc-table th { text-align: left; color: #64748b; font-weight: 600; padding: 4px 8px; border-bottom: 1px solid #334155; font-size: 0.68rem; text-transform: uppercase; }
+  .acc-table td { padding: 5px 8px; border-bottom: 1px solid #1e293b; color: #cbd5e1; }
+  .acc-table tr:last-child td { border-bottom: none; }
+  .badge { font-size: 0.65rem; padding: 1px 6px; border-radius: 99px; font-weight: 600; }
+  .badge-green { background: #064e3b; color: #6ee7b7; }
+  .badge-red   { background: #450a0a; color: #fca5a5; }
+
+  /* ── Gap badges ── */
+  .gap-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .gap-badge { font-size: 0.7rem; padding: 3px 10px; border-radius: 99px; }
+  .gap-exists  { background: #064e3b; color: #6ee7b7; border: 1px solid #059669; }
+  .gap-missing { background: #450a0a; color: #fca5a5; border: 1px solid #dc2626; }
+  .gap-partial { background: #431407; color: #fed7aa; border: 1px solid #f97316; }
+
+  /* ── Legend ── */
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 20px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.7rem; color: #94a3b8; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 3px; }
+
+  @media (max-width: 700px) { .page { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<h1>明倫餐飲集團 ── 廠商進貨→請款→匯款 完整流程</h1>
+<p class="subtitle">請確認各步驟是否符合實際作業方式，有問題隨時在 LINE 回覆</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div> 觸發動作</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div> AI 自動處理</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div> 資料存入</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#eab308"></div> 判斷/決策</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#10b981"></div> 完成</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div> 例外處理</div>
+</div>
+
+<div class="page">
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- LEFT: Main Flow                                        -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div>
+    <div class="section-title">📦 主流程：進貨 → 請款 → 匯款</div>
+    <div class="flow">
+
+      <!-- PHASE 1: 收貨 -->
+      <div class="node node-trigger">
+        <div class="icon">🚚</div>
+        <strong>廠商送貨到店</strong>
+        <div class="tag">店員收到貨物</div>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node node-action">
+        <div class="icon">📷</div>
+        <strong>LINE 上傳送貨單照片</strong>
+        <div class="tag">直接傳圖片到群組</div>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node node-ai">
+        <div class="icon">🤖</div>
+        <strong>AI OCR 自動辨識</strong>
+        <div class="tag">廠商・品項・單價・數量・總額・單號</div>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node node-decision">
+        <div class="icon">❓</div>
+        <strong>辨識信心度</strong>
+      </div>
+
+      <!-- Branch: high vs low confidence -->
+      <div style="display:flex;width:100%;max-width:280px;height:24px;position:relative;">
+        <div style="position:absolute;left:25%;top:0;width:50%;height:1px;background:#334155;"></div>
+        <div style="position:absolute;left:25%;top:0;width:1px;height:24px;background:#334155;"></div>
+        <div style="position:absolute;right:25%;top:0;width:1px;height:24px;background:#334155;"></div>
+      </div>
+      <div class="branch-row" style="max-width:280px;">
+        <div class="branch-col">
+          <div class="branch-label" style="color:#6ee7b7;">✅ 高信心度</div>
+          <div class="node node-ai" style="max-width:120px;padding:7px 8px;font-size:0.73rem;">自動帶入欄位<br>等待確認</div>
+        </div>
+        <div class="branch-col">
+          <div class="branch-label" style="color:#fca5a5;">⚠️ 低信心度</div>
+          <div class="node node-warn" style="max-width:120px;padding:7px 8px;font-size:0.73rem;">提示人工補填<br>缺少欄位</div>
+        </div>
+      </div>
+      <div style="display:flex;width:100%;max-width:280px;height:20px;position:relative;">
+        <div style="position:absolute;left:25%;bottom:0;width:50%;height:1px;background:#334155;"></div>
+        <div style="position:absolute;left:25%;bottom:0;width:1px;height:20px;background:#334155;"></div>
+        <div style="position:absolute;right:25%;bottom:0;width:1px;height:20px;background:#334155;"></div>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node node-action">
+        <div class="icon">✏️</div>
+        <strong>員工確認 / 補填</strong>
+        <div class="tag">店別・品項・單價・數量（若OCR漏填）</div>
+      </div>
+      <div class="arrow"></div>
+
+      <!-- PHASE 2: 歸檔 -->
+      <div class="node node-store">
+        <div class="icon">📁</div>
+        <strong>系統歸檔（同步四處）</strong>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-top:6px;">
+          <span style="font-size:0.68rem;background:rgba(0,0,0,.3);padding:2px 7px;border-radius:4px;">Google Drive 原始圖</span>
+          <span style="font-size:0.68rem;background:rgba(0,0,0,.3);padding:2px 7px;border-radius:4px;">收據記錄 Sheet</span>
+          <span style="font-size:0.68rem;background:rgba(0,0,0,.3);padding:2px 7px;border-radius:4px;">庫存台帳 +入庫</span>
+          <span style="font-size:0.68rem;background:rgba(0,0,0,.3);padding:2px 7px;border-radius:4px;">應付帳款 +金額</span>
+        </div>
+      </div>
+      <div class="arrow"></div>
+
+      <!-- PHASE 3: 請款週期 -->
+      <div class="node node-action">
+        <div class="icon">📅</div>
+        <strong>累積至請款週期</strong>
+        <div class="tag">依廠商設定：週結 or 月結</div>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node node-action">
+        <div class="icon">🔍</div>
+        <strong>查詢廠商應付明細</strong>
+        <div class="cmd">/應付 大成長城</div>
+        <div class="tag">顯示：每筆送貨 + 週期加總金額</div>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node node-decision">
+        <div class="icon">👔</div>
+        <strong>主管核准匯款</strong>
+        <div class="tag">確認金額無誤</div>
+      </div>
+      <div class="arrow"></div>
+
+      <!-- PHASE 4: 匯款 -->
+      <div class="node node-action">
+        <div class="icon">💸</div>
+        <strong>執行匯款 + 登記</strong>
+        <div class="cmd">/匯款 大成長城 2026-05-15</div>
+        <div class="tag">系統記錄匯款日期・金額・帳號</div>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node node-action">
+        <div class="icon">📷</div>
+        <strong>上傳匯款截圖</strong>
+        <div class="tag">傳圖到 LINE → 自動辨識為「匯款憑證」</div>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node node-ai">
+        <div class="icon">📤</div>
+        <strong>自動推播廠商 LINE 群組</strong>
+        <div class="tag">「已匯款 NT$33,000｜附截圖｜明細3筆」</div>
+      </div>
+      <div class="arrow"></div>
+
+      <div class="node node-success">
+        <div class="icon">✅</div>
+        <strong>應付帳款歸零 · 本週期完成</strong>
+        <div class="tag">流水帳自動記一筆支出</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- RIGHT: Supporting Systems                              -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div style="display:flex;flex-direction:column;gap:16px;">
+
+    <!-- 廠商主檔 -->
+    <div>
+      <div class="section-title">🗂 廠商主檔設定（一次性）</div>
+      <div class="panel">
+        <div class="panel-row">
+          <div class="panel-icon">📝</div>
+          <div class="panel-text">
+            <div><strong>新增廠商</strong></div>
+            <code>/廠商設定 大成長城 農產品收據 週結 004-123456789 大成農業股份有限公司</code>
+          </div>
+        </div>
+        <div class="panel-row">
+          <div class="panel-icon">📄</div>
+          <div class="panel-text">
+            <div class="lbl">發票類型（三選一）</div>
+            統一發票（花號）／農產品收據／一般收據
+          </div>
+        </div>
+        <div class="panel-row">
+          <div class="panel-icon">🗓</div>
+          <div class="panel-text">
+            <div class="lbl">請款週期</div>
+            週結（每週一結算）or 月結（月底統一）
+          </div>
+        </div>
+        <div class="panel-row">
+          <div class="panel-icon">🏦</div>
+          <div class="panel-text">
+            <div class="lbl">匯款帳號（系統保存，自動帶入）</div>
+            銀行代碼 + 帳號 + 戶名
+          </div>
+        </div>
+        <div class="panel-row">
+          <div class="panel-icon">💬</div>
+          <div class="panel-text">
+            <div class="lbl">廠商 LINE 群組 ID（自動推播用）</div>
+            <code>/myid</code> 在廠商群組取得
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 店科目 -->
+    <div>
+      <div class="section-title">📊 店科目（收支分類）</div>
+      <div class="panel">
+        <table class="acc-table">
+          <thead>
+            <tr><th>科目</th><th>類別</th><th>例子</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>門市銷售</td><td><span class="badge badge-green">收入</span></td><td>每週結帳</td></tr>
+            <tr><td>電商收入</td><td><span class="badge badge-green">收入</span></td><td>蝦皮/LINE購物</td></tr>
+            <tr><td>禮券銷售</td><td><span class="badge badge-green">收入</span></td><td>企業團購</td></tr>
+            <tr><td>食材進貨</td><td><span class="badge badge-red">支出</span></td><td>雞蛋/麵粉</td></tr>
+            <tr><td>員工薪資</td><td><span class="badge badge-red">支出</span></td><td>每月15日</td></tr>
+            <tr><td>店租</td><td><span class="badge badge-red">支出</span></td><td>每月1日</td></tr>
+            <tr><td>水電瓦斯</td><td><span class="badge badge-red">支出</span></td><td>月結</td></tr>
+            <tr><td>設備維修</td><td><span class="badge badge-red">支出</span></td><td>烤盤/冰箱</td></tr>
+          </tbody>
+        </table>
+        <div style="font-size:0.7rem;color:#64748b;margin-top:8px;">每筆記帳自動帶入科目 → 月報依科目分類顯示</div>
+      </div>
+    </div>
+
+    <!-- 目前功能缺口 -->
+    <div>
+      <div class="section-title">⚠️ 現有功能 vs 需新增</div>
+      <div class="panel">
+        <div style="font-size:0.73rem;color:#94a3b8;margin-bottom:8px;">點選項目可標記「確認」</div>
+        <div class="gap-row">
+          <span class="gap-badge gap-exists">✅ 照片OCR歸檔</span>
+          <span class="gap-badge gap-exists">✅ /叫貨 /到貨</span>
+          <span class="gap-badge gap-exists">✅ Drive 上傳</span>
+          <span class="gap-badge gap-exists">✅ 廠商推播能力</span>
+          <span class="gap-badge gap-partial">🟡 /到貨 缺單價</span>
+          <span class="gap-badge gap-partial">🟡 發票類型未分類</span>
+          <span class="gap-badge gap-missing">❌ 廠商主檔</span>
+          <span class="gap-badge gap-missing">❌ /應付 週期加總</span>
+          <span class="gap-badge gap-missing">❌ /匯款 指令</span>
+          <span class="gap-badge gap-missing">❌ 廠商群組登記</span>
+          <span class="gap-badge gap-missing">❌ 店科目分類</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- /應付 回覆範例 -->
+    <div>
+      <div class="section-title">💬 LINE 回覆範例</div>
+      <div class="panel">
+        <div style="font-size:0.73rem;color:#94a3b8;margin-bottom:8px;">/應付 大成長城</div>
+        <div style="background:#0f172a;border-radius:8px;padding:10px;font-size:0.75rem;font-family:monospace;color:#e2e8f0;line-height:1.8;">
+          📋 大成長城 本週應付明細<br>
+          <span style="color:#94a3b8;">請款週期：週結｜發票類型：農產品收據</span><br>
+          ─────────────────<br>
+          05/06 雞蛋30箱 @600 = <span style="color:#fde68a;">$18,000</span><br>
+          05/09 雞蛋25箱 @600 = <span style="color:#fde68a;">$15,000</span><br>
+          ─────────────────<br>
+          合計：<span style="color:#6ee7b7;font-size:0.85rem;">NT$33,000</span><br>
+          匯款帳號：004-123456789（大成農業）<br>
+          <span style="color:#94a3b8;">輸入 /匯款 大成長城 確認匯款</span>
+        </div>
+
+        <div style="font-size:0.73rem;color:#94a3b8;margin:10px 0 6px;">/匯款 後廠商收到的推播</div>
+        <div style="background:#0f172a;border-radius:8px;padding:10px;font-size:0.75rem;font-family:monospace;color:#e2e8f0;line-height:1.8;">
+          🏦 明倫餐飲集團 匯款通知<br>
+          日期：2026-05-15<br>
+          金額：<span style="color:#6ee7b7;">NT$33,000</span><br>
+          品項：雞蛋 05/06・05/09 共 2 筆<br>
+          ─────────────────<br>
+          [附匯款截圖]<br>
+          <span style="color:#94a3b8;">如有問題請回覆此群組</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- BOTTOM: Phase Timeline                                 -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div class="full-width">
+    <div class="section-title">🗓 每週作業節奏（以週結廠商為例）</div>
+    <div class="panel" style="padding:16px;">
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;text-align:center;font-size:0.72rem;">
+        <div style="color:#64748b;padding-bottom:4px;border-bottom:1px solid #334155;">一</div>
+        <div style="color:#64748b;padding-bottom:4px;border-bottom:1px solid #334155;">二</div>
+        <div style="color:#64748b;padding-bottom:4px;border-bottom:1px solid #334155;">三</div>
+        <div style="color:#64748b;padding-bottom:4px;border-bottom:1px solid #334155;">四</div>
+        <div style="color:#64748b;padding-bottom:4px;border-bottom:1px solid #334155;">五</div>
+        <div style="color:#64748b;padding-bottom:4px;border-bottom:1px solid #334155;">六</div>
+        <div style="color:#64748b;padding-bottom:4px;border-bottom:1px solid #334155;">日</div>
+
+        <div style="background:#1e3a5f;border-radius:6px;padding:6px 4px;color:#93c5fd;">廠商送貨<br>上傳照片</div>
+        <div style="background:#1a2e1a;border-radius:6px;padding:6px 4px;color:#86efac;">AI歸檔<br>庫存更新</div>
+        <div style="background:#1e3a5f;border-radius:6px;padding:6px 4px;color:#93c5fd;">廠商送貨<br>上傳照片</div>
+        <div style="background:#1a2e1a;border-radius:6px;padding:6px 4px;color:#86efac;">AI歸檔<br>庫存更新</div>
+        <div style="background:#2d1f00;border-radius:6px;padding:6px 4px;color:#fde68a;">⭐ 週結日<br>/應付查詢</div>
+        <div style="background:#1a1a2e;border-radius:6px;padding:6px 4px;color:#ddd6fe;">主管核准<br>/匯款執行</div>
+        <div style="background:#0d2416;border-radius:6px;padding:6px 4px;color:#6ee7b7;">推播廠商<br>週期完成</div>
+      </div>
+      <div style="font-size:0.7rem;color:#64748b;margin-top:10px;text-align:center;">
+        月結廠商：每月底執行一次相同流程 ｜ 農產品收據廠商：依送貨日期逐筆歸入當週
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div style="text-align:center;margin-top:24px;font-size:0.75rem;color:#475569;">
+  有問題或需要調整流程，請在 LINE 告知 👆
+</div>
+
+</body>
+</html>

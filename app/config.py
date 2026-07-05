@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     # Local storage
     storage_path: str = Field("storage", alias="STORAGE_PATH")
     public_base_url: str = Field("http://localhost:8001", alias="PUBLIC_BASE_URL")
+    # Local xlsx (primary data store). Override with XLSX_PATH env var if needed.
+    xlsx_path: str = Field("ERP bot.xlsx", alias="XLSX_PATH")
 
     # Business rules
     amount_alert_threshold: float = Field(100_000.0, alias="AMOUNT_ALERT_THRESHOLD")
